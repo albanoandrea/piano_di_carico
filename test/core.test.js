@@ -121,7 +121,36 @@ function time(fn) { const t = Date.now(); const r = fn(); return [r, Date.now() 
   check('planCombo 2 x 20\': due container, nessun errore', s.conts.length === 2 && s.forced && noErrors(s, cs, o) && uniqueUids(s) && placed(s) + s.unplaced.length === 30);
 }
 
-// 9. parseTable
+// 9. container preferiti: a parità di numero di container si scelgono prima
+{
+  const u = units([{ code: 'EUR', l: 120, w: 80, h: 100, kg: 200, qty: 30, stack: true }]);
+  const cs = conts(), o = opts();
+  const s = C.autoPlan(u, cs, o)[0];
+  check("preferiti: 30 europallet -> 40' Standard (preferito)", cs[s.conts[0].ci].name === "40' Standard", names(s, cs));
+  const cs2 = conts(); cs2.forEach(c => c.pref = c.name === "40' High Cube");
+  const s2 = C.autoPlan(u, cs2, o)[0];
+  check("preferiti: se il preferito è il 40' High Cube, usa quello", s2.conts.length === 1 && cs2[s2.conts[0].ci].name === "40' High Cube", names(s2, cs2));
+  const cs3 = conts(), o3 = opts({ timeLimit: 0 });
+  const u3 = units([{ code: 'C', l: 120, w: 100, h: 200, kg: 300, qty: 30, stack: false }]);
+  const s3 = C.autoPlan(u3, cs3, o3)[0];
+  check('preferiti: 30 casse -> nessun container non preferito', s3.fit && s3.conts.every(k => cs3[k.ci].pref), names(s3, cs3));
+}
+
+// 10. ricerca migliorata: con il tempo a disposizione trova soluzioni più piccole di quella veloce
+{
+  const rows = [
+    { code: 'PAL-A', l: 120, w: 80, h: 110, kg: 450, qty: 12, stack: true }, { code: 'PAL-B', l: 120, w: 100, h: 105, kg: 600, qty: 6, stack: true },
+    { code: 'CASSA 1', l: 200, w: 110, h: 90, kg: 380, qty: 5, stack: true }, { code: 'CASSA 2', l: 150, w: 90, h: 60, kg: 120, qty: 6, stack: false },
+    { code: 'MACCHINA', l: 240, w: 150, h: 180, kg: 1500, qty: 2, stack: false }];
+  const cs = conts();
+  const fast = C.autoPlan(units(rows), cs, opts({ timeLimit: 0 }))[0];
+  const [slow, ms] = time(() => C.autoPlan(units(rows), cs, opts())[0]);
+  check('ricerca migliorata: container più piccolo della ricerca veloce', slow.fit && C.cvol(cs[slow.conts[0].ci]) < C.cvol(cs[fast.conts[0].ci]), names(fast, cs) + ' -> ' + names(slow, cs) + ' (' + ms + ' ms)');
+  check('ricerca migliorata: nessun errore', noErrors(slow, cs, opts()));
+  check('ricerca migliorata: sotto i 10 secondi', ms < 10000, ms + ' ms');
+}
+
+// 11. parseTable
 {
   const r = C.parseTable([['Codice', 'Lunghezza', 'Larghezza', 'Altezza', 'Peso', 'Quantità', 'Sovrapponibile'], ['A', '1,2', '0,8', '1', '100', '2', 'no']]);
   check('parseTable: virgola e metri -> cm', r.rows.length === 1 && r.rows[0].l === 120 && r.rows[0].h === 100 && r.rows[0].stack === false && r.rows[0].qty === 2);

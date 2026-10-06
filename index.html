@@ -224,7 +224,7 @@ svg.plan text{font-family:"Bahnschrift","Roboto Condensed","Arial Narrow",sans-s
         <summary>Container e regole</summary>
         <div class="tbl-wrap">
           <table>
-            <thead><tr><th>Usa</th><th>Nome</th><th>Lungh. interna cm</th><th>Largh. cm</th><th>Altezza cm</th><th>Porta largh. cm</th><th>Porta alt. cm</th><th>Peso max kg</th></tr></thead>
+            <thead><tr><th>Usa</th><th>Preferito</th><th>Nome</th><th>Lungh. interna cm</th><th>Largh. cm</th><th>Altezza cm</th><th>Porta largh. cm</th><th>Porta alt. cm</th><th>Peso max kg</th></tr></thead>
             <tbody id="contBody"></tbody>
           </table>
         </div>
@@ -237,6 +237,7 @@ svg.plan text{font-family:"Bahnschrift","Roboto Condensed","Arial Narrow",sans-s
         </div>
         <p class="hint">Altre soluzioni: con 10%, se la soluzione migliore riempie l'80%, ti propongo anche quelle che riempiono almeno il 72%. Al massimo 3 soluzioni.</p>
         <button class="btn" id="bResetCont">Ripristina valori standard</button>
+        <p class="hint">Usa = il programma può sceglierlo. Preferito = a parità di numero di container, il programma sceglie prima questi.</p>
         <p class="hint">Le misure dei container cambiano un po' tra le compagnie: controlla quelle del tuo spedizioniere.</p>
       </details>
 
@@ -331,11 +332,13 @@ svg.plan text{font-family:"Bahnschrift","Roboto Condensed","Arial Narrow",sans-s
 // ===================== CORE-START (logica di calcolo) =====================
 const EPS = 0.01;
 const DEFAULT_CONTAINERS = [
-  {name:"20' Standard",  L:589,  W:235, H:239, doorW:234, doorH:228, maxKg:28200, use:true},
-  {name:"40' Standard",  L:1203, W:235, H:239, doorW:234, doorH:228, maxKg:26700, use:true},
-  {name:"40' High Cube", L:1203, W:235, H:269, doorW:234, doorH:258, maxKg:26500, use:true},
-  {name:"45' High Cube", L:1355, W:235, H:269, doorW:234, doorH:258, maxKg:27600, use:true}
+  {name:"20' Standard",  L:589,  W:235, H:239, doorW:234, doorH:228, maxKg:28200, use:true, pref:true},
+  {name:"40' Standard",  L:1203, W:235, H:239, doorW:234, doorH:228, maxKg:26700, use:true, pref:true},
+  {name:"40' High Cube", L:1203, W:235, H:269, doorW:234, doorH:258, maxKg:26500, use:true, pref:false},
+  {name:"45' High Cube", L:1355, W:235, H:269, doorW:234, doorH:258, maxKg:27600, use:true, pref:false}
 ];
+const TIME_LIMIT = 8000;   // ms per la ricerca di soluzioni migliori
+const EFFORT = 24;         // ordini di carico variati per ogni container nella ricerca migliore
 const DEFAULT_OPTS = {tol:5, maxSup:2, minSup:80, maxCont:5, altGap:10};
 
 function ov(a0,a1,b0,b1){ return Math.min(a1,b1)-Math.max(a0,b0); }
@@ -371,16 +374,20 @@ function fitsDoor(u,c){
   return u.h<=c.doorH+EPS && u.h<=c.H+EPS &&
          Math.min(u.l,u.w)<=Math.min(c.doorW,c.W)+EPS && Math.max(u.l,u.w)<=c.L+EPS;
 }
-// trova la posizione migliore: più in fondo possibile, poi più in basso, poi più a sinistra
+// trova la posizione migliore. Regola normale (opts.place vuoto): più in fondo possibile, poi più in basso, poi più a sinistra.
+// opts.place='up': più in fondo, poi sopra un altro collo se si può (risparmia pavimento).
+// opts.place='floor': prima più in basso, poi più in fondo (riempie il pavimento a strati).
 function findPosition(boxes,u,c,opts){
   if(!fitsDoor(u,c)) return null;
+  const mode=opts.place||'';
   const orients=[[u.l,u.w,false]];
   if(Math.abs(u.l-u.w)>EPS) orients.push([u.w,u.l,true]);
   const xs=new Set([0]), ys=new Set([0]);
   for(const b of boxes){ xs.add(b.x); xs.add(b.x+b.l); ys.add(b.y); ys.add(b.y+b.w); }
   const xa=[...xs].sort((a,b)=>a-b), ya=[...ys];
+  const zBetter=mode==='up'?(z,bz)=>z>bz+EPS:(z,bz)=>z<bz-EPS;
+  let best=null;
   for(const x of xa){
-    let best=null;
     for(const [l,w,rot] of orients){
       if(x+l>c.L+EPS) continue;
       const yc=ya.concat([c.W-w]);
@@ -388,22 +395,26 @@ function findPosition(boxes,u,c,opts){
         if(y<-EPS || y+w>c.W+EPS) continue;
         const z=restZ(boxes,x,y,l,w);
         if(z+u.h>c.H+EPS) continue;
+        if(best && mode==='floor' && z>best.z+EPS) continue;
         if(z>EPS && supportCheck(boxes,x,y,l,w,z,opts).length) continue;
-        if(!best || z<best.z-EPS ||
-           (Math.abs(z-best.z)<=EPS && (y<best.y-EPS || (Math.abs(y-best.y)<=EPS && x+l<best.x+best.l-EPS))))
+        if(!best || (mode==='floor' && z<best.z-EPS) ||
+           (Math.abs(x-best.x)<=EPS && (zBetter(z,best.z) ||
+             (Math.abs(z-best.z)<=EPS && (y<best.y-EPS || (Math.abs(y-best.y)<=EPS && x+l<best.x+best.l-EPS))))))
           best={x,y,z,l,w,rot};
       }
     }
-    if(best) return best;
+    if(best && mode!=='floor') return best;
+    if(best && mode==='floor' && best.z<=EPS) return best;
   }
-  return null;
+  return best;
 }
 function toBox(u,p){ return {uid:u.uid,row:u.row,n:u.n,code:u.code,h:u.h,kg:u.kg,stack:u.stack,x:p.x,y:p.y,z:p.z,l:p.l,w:p.w,rot:!!p.rot}; }
 function toUnit(b){ return {uid:b.uid,row:b.row,n:b.n,code:b.code,h:b.h,kg:b.kg,stack:b.stack,l:b.rot?b.w:b.l,w:b.rot?b.l:b.w}; }
 const cvol=c=>c.L*c.W*c.H;
 const maxKgOf=c=>c.maxKg>0?c.maxKg:Infinity;
-function packUnits(units,c,opts,cmp){
-  const order=units.slice().sort(cmp), boxes=[], out=[];
+function packUnits(units,c,opts,cmp){ return packOrder(units.slice().sort(cmp),c,opts); }
+function packOrder(order,c,opts){
+  const boxes=[], out=[];
   let kg=0;
   // se un collo non trova posto, uno uguale non lo trova finché non si aggiunge un altro collo
   let noRoom=new Set();
@@ -428,39 +439,69 @@ const STRATS=[
   (a,b)=>(vol(b)-vol(a))||tie(a,b),
   (a,b)=>(Math.max(b.l,b.w)-Math.max(a.l,a.w))||(b.h-a.h)||tie(a,b)
 ];
-// prima prova con appoggio pieno (piano più ordinato), poi con le regole dell'utente
-function bestPack(units,c,opts){
+// numeri pseudo-casuali con seme fisso: stesso carico, stesso risultato
+function rng(seed){
+  return ()=>{ seed=seed+0x6D2B79F5|0; let t=Math.imul(seed^seed>>>15,1|seed);
+    t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; };
+}
+function hashStr(s){ let h=2166136261; for(let i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,16777619); } return h|0; }
+// ordine di carico con pesi casuali: sovrapponibile, base, altezza, volume, peso, più un po' di rumore
+function variedOrder(units,rnd){
+  const mx=f=>Math.max(1e-9,...units.map(f));
+  const B=mx(base), H=mx(u=>u.h), Vm=mx(vol), K=mx(u=>u.kg||0);
+  const w=[rnd()<0.6?2+rnd()*2:0, rnd(), rnd(), rnd(), rnd()*0.5, rnd()*0.4];
+  const key=new Map(units.map(u=>[u,
+    w[0]*u.stack + w[1]*base(u)/B + w[2]*u.h/H + w[3]*vol(u)/Vm + w[4]*(u.kg||0)/K + w[5]*rnd()]));
+  return units.slice().sort((a,b)=>(key.get(b)-key.get(a))||tie(a,b));
+}
+const PLACES=['','up','floor'];
+const better=(r,best)=>!best || r.uvol<best.uvol-EPS || (Math.abs(r.uvol-best.uvol)<=EPS && r.len<best.len-EPS);
+// prima prova con appoggio pieno (piano più ordinato), poi con le regole dell'utente.
+// effort > 0: se non entra tutto, prova anche "effort" ordini variati per passaggio
+function bestPack(units,c,opts,effort,deadline){
   let best=null;
   const passes=[{...opts,minSup:Math.max(opts.minSup,98)}];
   if(opts.minSup<98) passes.push(opts);
+  const rnd=effort?rng(hashStr(c.L+'|'+c.W+'|'+c.H+'|'+units.map(u=>u.uid).join(','))):null;
+  // colli con stesse misure, peso e sovrapponibilità sono intercambiabili: un ordine già provato non si rifà
+  const ids=new Map(), shapeOf=u=>{ const k=u.l+'x'+u.w+'x'+u.h+'|'+u.kg+(u.stack?'s':'n'); if(!ids.has(k)) ids.set(k,ids.size); return ids.get(k); };
   for(const o of passes){
-    for(const cmp of STRATS){
-      const r=packUnits(units,c,o,cmp);
-      if(!best || r.uvol<best.uvol-EPS || (Math.abs(r.uvol-best.uvol)<=EPS && r.len<best.len-EPS)) best=r;
+    const seen=new Set();
+    const tryOrder=(order,place)=>{
+      const sig=(place||'')+':'+order.map(shapeOf).join(',');
+      if(seen.has(sig)) return; seen.add(sig);
+      const r=packOrder(order,c,place?{...o,place}:o); if(better(r,best)) best=r;
+    };
+    for(const cmp of STRATS) tryOrder(units.slice().sort(cmp),'');
+    for(let t=0;t<(effort||0) && best.uvol>EPS && !(deadline && Date.now()>deadline);t++){
+      // prime prove: le strategie normali con le regole 'up' e 'floor'; poi ordini con pesi casuali e regola a turno
+      const fixed=t<2*STRATS.length;
+      tryOrder(fixed ? units.slice().sort(STRATS[t>>1]) : variedOrder(units,rnd), fixed?(t&1?'floor':'up'):PLACES[t%PLACES.length]);
     }
     if(best.uvol<=EPS) break;
   }
   return best;
 }
-// riempie i container nell'ordine dato: quello che non entra passa al container successivo
-// con prune=true si ferma appena il resto non può più entrare nei container rimasti (risultato: uvol=Infinity)
-function packCombo(units,cis,containers,opts,cache,prune){
+// riempie i container nell'ordine dato: quello che non entra passa al container successivo.
+// prune=true: si ferma appena il resto non può più entrare nei container rimasti (uvol=Infinity).
+// over = volume che resta fuori (con prune: volume in più rispetto allo spazio rimasto)
+function packCombo(units,cis,containers,opts,cache,prune,effort,deadline){
   let rest=units; const conts=[];
   for(let j=0;j<cis.length;j++){
     const ci=cis[j];
     if(!rest.length){ conts.push({ci,boxes:[]}); continue; }
     if(prune && j>0){
-      const left=cis.slice(j);
-      if(rest.reduce((s,u)=>s+vol(u),0)>left.reduce((s,x)=>s+cvol(containers[x]),0)+EPS ||
-         rest.reduce((s,u)=>s+u.kg,0)>left.reduce((s,x)=>s+maxKgOf(containers[x]),0)+EPS)
-        return {conts,unplaced:rest,uvol:Infinity};
+      const left=cis.slice(j), rv=rest.reduce((s,u)=>s+vol(u),0), lv=left.reduce((s,x)=>s+cvol(containers[x]),0);
+      if(rv>lv+EPS || rest.reduce((s,u)=>s+u.kg,0)>left.reduce((s,x)=>s+maxKgOf(containers[x]),0)+EPS)
+        return {conts,unplaced:rest,uvol:Infinity,over:Math.max(rv-lv,EPS)};
     }
-    const key=ci+'|'+rest.map(u=>u.uid).join(',');
+    const key=ci+'|'+(effort||0)+'|'+rest.map(u=>u.uid).join(',');
     let r=cache&&cache.get(key);
-    if(!r){ r=bestPack(rest,containers[ci],opts); if(cache) cache.set(key,r); }
+    if(!r){ r=bestPack(rest,containers[ci],opts,effort,deadline); if(cache) cache.set(key,r); }
     conts.push({ci,boxes:r.boxes}); rest=r.unplaced;
   }
-  return {conts,unplaced:rest,uvol:rest.reduce((s,u)=>s+vol(u),0)};
+  const uvol=rest.reduce((s,u)=>s+vol(u),0);
+  return {conts,unplaced:rest,uvol,over:uvol};
 }
 const cloneSol=(r,fit,extra)=>({
   conts:r.conts.map(k=>({ci:k.ci,boxes:k.boxes.map(b=>({...b}))})),
@@ -472,8 +513,10 @@ function planCombo(units,cis,containers,opts){
   const r=packCombo(units,cis,containers,opts,null);
   return {...cloneSol(r,!r.unplaced.length),forced:true};
 }
-// cerca il numero minimo di container (fino a opts.maxCont) e fino a 3 soluzioni con riempimento simile
+// cerca il numero minimo di container (fino a opts.maxCont) e fino a 3 soluzioni con riempimento simile.
+// Ordine di preferenza: meno container, poi meno container non preferiti, poi meno volume.
 function autoPlan(units,containers,opts){
+  const t0=Date.now(), deadline=t0+(opts.timeLimit==null?TIME_LIMIT:opts.timeLimit);
   const list=containers.map((c,i)=>({c,i})).filter(o=>o.c.use).sort((a,b)=>cvol(b.c)-cvol(a.c));
   if(!list.length) return null;
   const maxN=Math.max(1,Math.min(5,Math.round(opts.maxCont||1)));
@@ -484,15 +527,17 @@ function autoPlan(units,containers,opts){
   if(noWay.length) notes.push(noWay.length+(noWay.length===1?' collo non passa':' colli non passano')+' dalla porta di nessun container.');
   const uv=todo.reduce((s,u)=>s+vol(u),0), kg=todo.reduce((s,u)=>s+(u.kg||0),0);
   const V=cis=>cis.reduce((s,ci)=>s+cvol(containers[ci]),0);
+  const NP=cis=>cis.filter(ci=>!containers[ci].pref).length;
+  const rankCmp=(a,b)=>(a.length-b.length)||(NP(a)-NP(b))||(V(a)-V(b));
   const possible=cis=>V(cis)>=uv-EPS && cis.reduce((s,ci)=>s+maxKgOf(containers[ci]),0)>=kg-EPS &&
     todo.every(u=>cis.some(ci=>fitsDoor(u,containers[ci])));
-  // combinazioni di n container, dal più grande al più piccolo, ordinate per volume totale
+  // combinazioni di n container (dentro: dal più grande al più piccolo), in ordine di preferenza
   const combos=n=>{
     const out=[];
     const rec=(start,acc)=>{ if(acc.length===n){ out.push(acc.slice()); return; }
       for(let j=start;j<list.length;j++){ acc.push(list[j].i); rec(j,acc); acc.pop(); } };
     rec(0,[]);
-    return out.filter(possible).sort((a,b)=>V(a)-V(b));
+    return out.filter(possible).sort(rankCmp);
   };
   const cache=new Map(), done=new Map();
   const run=(cis,full)=>{ const k=cis.join(',');
@@ -500,9 +545,26 @@ function autoPlan(units,containers,opts){
     return done.get(k).r; };
   const fits=r=>!r.unplaced.length && r.conts.every(k=>k.boxes.length);
 
+  // 1. ricerca veloce
   let best=null;
   for(let n=1;n<=maxN && !best;n++)
     for(const cis of combos(n)){ if(fits(run(cis))){ best=cis; break; } }
+
+  // 2. con il tempo che resta, riprova con ordini variati le combinazioni migliori che per poco non bastavano
+  const cands=[];
+  for(let n=1;n<=(best?best.length:maxN);n++) for(const cis of combos(n)) if(!best || rankCmp(cis,best)<0) cands.push(cis);
+  cands.sort(rankCmp);
+  // giri con sempre più tentativi, finché c'è tempo
+  improve: for(const eff of [EFFORT,EFFORT*5,EFFORT*20]){
+    for(const cis of cands){
+      if(Date.now()>deadline) break improve;
+      const d=done.get(cis.join(','));
+      if(!d || d.r.over>uv*0.1) continue;
+      const r=packCombo(todo,cis,containers,opts,cache,true,eff,deadline);
+      if(r.over<d.r.over-EPS) d.r=r;
+      if(fits(r)){ best=cis; break improve; }
+    }
+  }
 
   // perché un solo container non basta
   // con un container: i più piccoli che non bastano; con più container: solo il più grande
@@ -518,17 +580,18 @@ function autoPlan(units,containers,opts){
   }
 
   if(!best){
-    run(Array(maxN).fill(list[0].i),true);
+    const big=Array(maxN).fill(list[0].i);
+    run(big,true);
+    if(Date.now()<deadline){ const r=packCombo(todo,big,containers,opts,cache,false,EFFORT,deadline); const d=done.get(big.join(',')); if(r.uvol<d.r.uvol-EPS) d.r=r; }
     let fb=null;
     for(const d of done.values()){
-      if(!fb || d.r.uvol<fb.r.uvol-EPS || (Math.abs(d.r.uvol-fb.r.uvol)<=EPS &&
-         (d.cis.length<fb.cis.length || (d.cis.length===fb.cis.length && V(d.cis)<V(fb.cis))))) fb=d;
+      if(!fb || d.r.uvol<fb.r.uvol-EPS || (Math.abs(d.r.uvol-fb.r.uvol)<=EPS && rankCmp(d.cis,fb.cis)<0)) fb=d;
     }
     if(maxN>1) notes.push('Anche con '+maxN+' container non entra tutto.');
     const s=cloneSol(fb.r,false,noWay); s.notes=notes; return [s];
   }
   if(best.length>1) notes.push('Un solo container non basta: il carico è diviso su '+best.length+' container.');
-  const sols=[cloneSol(run(best),!noWay.length,noWay)], taken=[best];
+  const sols=[cloneSol(done.get(best.join(',')).r,!noWay.length,noWay)], taken=[best];
   // una combinazione che contiene una soluzione già trovata con container uguali o più grandi non è una vera alternativa
   const ge=(a,b)=>['L','W','H','doorW','doorH'].every(k=>a[k]>=b[k]-EPS);
   const covers=(cis,t)=>{ const free=cis.slice();
@@ -674,10 +737,10 @@ const PALETTE=['#D2AE74','#93BBA6','#93AED3','#CC98AA','#DDBB5E','#7FBDBD','#BBA
 const colorOf=row=>PALETTE[row%PALETTE.length];
 const fmt=(n,d=0)=>Number(n).toLocaleString('it-IT',{minimumFractionDigits:d,maximumFractionDigits:d});
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const APP_VERSION='1.1.0';
+const APP_VERSION='1.2.0';
 // esempio: la soluzione migliore usa 2 container, l'alternativa 3
 const SAMPLE=[
-  {code:'PAL-A',l:120,w:80,h:110,kg:450,qty:20,stack:true},
+  {code:'PAL-A',l:120,w:80,h:110,kg:450,qty:24,stack:true},
   {code:'PAL-B',l:120,w:100,h:105,kg:600,qty:10,stack:true},
   {code:'CASSA 1',l:200,w:110,h:90,kg:380,qty:8,stack:true},
   {code:'CASSA 2',l:150,w:90,h:60,kg:120,qty:10,stack:false},
@@ -699,6 +762,7 @@ function load(){
     const d=JSON.parse(localStorage.getItem(KEY)||'null');
     if(d && Array.isArray(d.rows)){
       S.rows=d.rows; if(Array.isArray(d.containers)&&d.containers.length) S.containers=d.containers; if(d.opts) S.opts={...DEFAULT_OPTS,...d.opts};
+      S.containers.forEach(c=>{ if(c.pref==null){ const def=DEFAULT_CONTAINERS.find(x=>x.name===c.name); c.pref=def?def.pref:false; } });
       setSols(Array.isArray(d.sols)?d.sols.map(normPlan).filter(Boolean):(d.plan?[normPlan(d.plan)]:[]),d.si);
       S.planRowsKey=d.planRowsKey||''; return true;
     }
@@ -817,6 +881,7 @@ $('#fileIn').onchange=async e=>{
 function renderSettings(){
   $('#contBody').innerHTML=S.containers.map((c,i)=>`<tr data-i="${i}">
     <td><input type="checkbox" data-k="use" ${c.use?'checked':''} aria-label="Usa ${esc(c.name)}"></td>
+    <td><input type="checkbox" data-k="pref" ${c.pref?'checked':''} aria-label="Preferito ${esc(c.name)}"></td>
     <td><input type="text" data-k="name" value="${esc(c.name)}"></td>
     ${['L','W','H','doorW','doorH','maxKg'].map(k=>`<td><input type="number" min="1" data-k="${k}" value="${c[k]}"></td>`).join('')}
   </tr>`).join('');
@@ -825,7 +890,7 @@ function renderSettings(){
 }
 $('#contBody').addEventListener('input',e=>{
   const tr=e.target.closest('tr'); const c=S.containers[+tr.dataset.i], k=e.target.dataset.k;
-  if(k==='use') c.use=e.target.checked; else if(k==='name') c.name=e.target.value; else { const v=parseNum(e.target.value); if(v>0) c[k]=v; }
+  if(k==='use') c.use=e.target.checked; else if(k==='pref') c.pref=e.target.checked; else if(k==='name') c.name=e.target.value; else { const v=parseNum(e.target.value); if(v>0) c[k]=v; }
   save(); updateStale();
 });
 ['oTol','oMax','oMin','oCont','oGap'].forEach(id=>$('#'+id).addEventListener('input',()=>{
@@ -843,8 +908,7 @@ function calculate(forceCis){
   const units=expandRows(S.rows);
   const bad=S.rows.filter(r=>!(r.l>0&&r.w>0&&r.h>0)).length;
   if(!units.length){ toast('Inserisci almeno un collo con le misure.'); return; }
-  if(units.length>400){ toast('Ci sono '+units.length+' colli: il calcolo può richiedere qualche secondo.'); }
-  $('#calcMsg').textContent='Calcolo in corso…'; $('#bCalc').disabled=true;
+  $('#calcMsg').textContent='Calcolo in corso… Può servire fino a 10 secondi.'; $('#bCalc').disabled=true;
   setTimeout(()=>{
     const badNote=bad?bad+(bad===1?' riga senza misure non è stata considerata.':' righe senza misure non sono state considerate.'):'';
     if(forceCis){

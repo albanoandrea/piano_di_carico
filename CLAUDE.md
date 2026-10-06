@@ -26,15 +26,16 @@ Strumento web per preparare i piani di carico dei container. L'utente inserisce 
 4. **Appoggio minimo:** la base deve essere appoggiata almeno per `minSup`% (80% di default, modificabile). Il calcolo automatico prima prova con appoggio quasi pieno (98%) per avere piani ordinati. Solo se non basta usa `minSup`.
 5. **Limiti del container:** si controllano il peso massimo, l'altezza interna e le misure della porta (larghezza e altezza). Il calcolo automatico non supera mai il peso massimo: i colli in più passano al container successivo.
 6. **Più container:** al massimo `maxCont` container (5 di default, da 1 a 5; con 1 si torna al comportamento a container singolo). Le soluzioni alternative devono riempire almeno `(1 - altGap/100)` del riempimento della migliore (`altGap` 10% di default). Entrambi in "Container e regole".
+7. **Container preferiti:** ogni container ha `pref` (casella "Preferito"; di default sì per 20' e 40' Standard, no per gli High Cube). A parità di numero di container si scelgono prima le combinazioni con meno container non preferiti, poi quelle con meno volume. Per escludere un tipo si toglie "Usa".
 
 ## Container di default (misure interne in cm)
 
-| Nome | L | W | H | Porta L × H | Peso max kg |
-|---|---|---|---|---|---|
-| 20' Standard | 589 | 235 | 239 | 234 × 228 | 28200 |
-| 40' Standard | 1203 | 235 | 239 | 234 × 228 | 26700 |
-| 40' High Cube | 1203 | 235 | 269 | 234 × 258 | 26500 |
-| 45' High Cube | 1355 | 235 | 269 | 234 × 258 | 27600 |
+| Nome | L | W | H | Porta L × H | Peso max kg | Preferito |
+|---|---|---|---|---|---|---|
+| 20' Standard | 589 | 235 | 239 | 234 × 228 | 28200 | sì |
+| 40' Standard | 1203 | 235 | 239 | 234 × 228 | 26700 | sì |
+| 40' High Cube | 1203 | 235 | 269 | 234 × 258 | 26500 | no |
+| 45' High Cube | 1355 | 235 | 269 | 234 × 258 | 27600 | no |
 
 Sono valori tipici. L'utente li modifica in "Container e regole".
 
@@ -52,10 +53,12 @@ Sono valori tipici. L'utente li modifica in "Container e regole".
 La logica di calcolo è tra i commenti `CORE-START` e `CORE-END`. È fatta di funzioni pure, senza DOM, e si può testare con Node.
 
 - **`expandRows(rows)`:** trasforma le righe della tabella in unità singole. Ogni unità ha `uid` = `"<indiceRiga>-<n>"`.
-- **`findPosition(boxes, unit, container, opts)`:** cerca la posizione per un collo. Prova le posizioni candidate (bordi dei colli già messi) e sceglie la più vicina al fondo (x minima), poi la più bassa (z), poi quella più a sinistra (y). Prova entrambe le rotazioni. Usa `restZ` (gravità) e `supportCheck` (regole di appoggio).
-- **`packUnits` / `bestPack`:** provano 6 ordinamenti diversi (`STRATS`) e tengono il risultato migliore: meno volume fuori, poi minore lunghezza usata. Nel primo passaggio usano l'appoggio quasi pieno. `packUnits` rispetta il peso massimo e salta i colli uguali a uno che non ha trovato posto (finché non si aggiunge un altro collo).
+- **`findPosition(boxes, unit, container, opts)`:** cerca la posizione per un collo. Prova le posizioni candidate (bordi dei colli già messi) e sceglie la più vicina al fondo (x minima), poi la più bassa (z), poi quella più a sinistra (y). Prova entrambe le rotazioni. Usa `restZ` (gravità) e `supportCheck` (regole di appoggio). Con `opts.place` cambia regola: `'up'` = a parità di x preferisce stare sopra un collo (risparmia pavimento); `'floor'` = prima la z più bassa in tutto il container, poi la x.
+- **`packUnits` / `packOrder` / `bestPack`:** provano 6 ordinamenti diversi (`STRATS`) e tengono il risultato migliore: meno volume fuori, poi minore lunghezza usata. Nel primo passaggio usano l'appoggio quasi pieno. Un ordine già provato (stessa sequenza di colli uguali) non si rifà. Con `effort > 0`, se non entra tutto, `bestPack` prova anche le strategie con le regole `'up'` e `'floor'` e poi ordini con pesi casuali (`variedOrder`). I numeri casuali hanno un seme fisso (`rng`, `hashStr`): stesso carico, stessi tentativi. `packUnits` rispetta il peso massimo e salta i colli uguali a uno che non ha trovato posto (finché non si aggiunge un altro collo).
 - **`packCombo(units, cis, containers, opts, cache, prune)`:** riempie i container nell'ordine dato; quello che non entra passa al successivo. `cache` riusa i risultati con stesso container e stessi colli rimasti. Con `prune` si ferma se il resto non può più entrare (volume o peso).
-- **`autoPlan(units, containers, opts)`:** restituisce un **array di soluzioni** (la migliore per prima, al massimo 3) o `null` se nessun container è attivo. Prova le combinazioni da 1 a `maxCont` container (dal più grande al più piccolo, per volume totale crescente) e scarta subito quelle impossibili per volume, peso o porta. La migliore è quella con meno container e poi meno volume. Le alternative hanno lo stesso numero di container o uno in più, riempimento simile (`altGap`), nessun container vuoto, e non sono una versione "più grande in tutto" di una soluzione già trovata. Se niente basta, restituisce una sola soluzione con i colli fuori.
+- **`autoPlan(units, containers, opts)`:** restituisce un **array di soluzioni** (la migliore per prima, al massimo 3) o `null` se nessun container è attivo. Lavora in due fasi:
+  1. **Ricerca veloce:** prova le combinazioni da 1 a `maxCont` container in ordine di preferenza (meno container, meno non preferiti, meno volume) e scarta subito quelle impossibili per volume, peso o porta. Tiene la prima dove entra tutto.
+  2. **Ricerca migliore:** fino a `TIME_LIMIT` ms dall'inizio (8000; `opts.timeLimit` lo cambia, i test usano 0 per la sola fase 1), riprova le combinazioni migliori di quella trovata dove restava fuori al massimo il 10% del volume. Fa giri con `EFFORT`, 5× e 20× tentativi. Il risultato può dipendere un po' dalla velocità del computer. Le alternative hanno lo stesso numero di container o uno in più, riempimento simile (`altGap`), nessun container vuoto, e non sono una versione "più grande in tutto" di una soluzione già trovata. Se niente basta, restituisce una sola soluzione con i colli fuori.
 - **`planCombo(units, cis, containers, opts)`:** piano con i tipi di container scelti a mano (tasto "Ricalcola").
 - **Formato soluzione:** `{conts:[{ci, boxes}], unplaced, notes, fit, forced}`. I colli fuori sono comuni a tutti i container della soluzione.
 - **`analyze(boxes, container, opts)`:** calcola il livello di ogni collo e gli errori: fuori dal container, troppo alto, porta, appoggio, sovrapposizione.
@@ -86,6 +89,7 @@ La logica di calcolo è tra i commenti `CORE-START` e `CORE-END`. È fatta di fu
   - 11 europallet 120×80 non sovrapponibili entrano in un 20'; 22 europallet sovrapponibili alti 100 cm entrano in un 20'.
   - Carichi grandi vanno su più container, senza errori, senza container vuoti e con ogni collo una volta sola.
   - Il peso massimo è rispettato; `maxCont` e `altGap` funzionano; al massimo 3 soluzioni.
+  - I container preferiti vengono scelti prima; la ricerca migliore trova un container più piccolo della ricerca veloce, in meno di 10 s.
   - I piani automatici hanno `analyze(...).errs.size === 0` in ogni container.
   Aggiungi un caso a questo file per ogni nuova regola o correzione.
 - **Interfaccia:** apri `index.html` nel browser. Il tasto "Carica esempio" carica dati di prova.
@@ -94,7 +98,7 @@ La logica di calcolo è tra i commenti `CORE-START` e `CORE-END`. È fatta di fu
 
 - **Soluzione non garantita ottimale:** l'algoritmo è euristico (il problema è "3D bin packing"). Trova soluzioni buone, non sempre la migliore.
 - **Più container, metodo goloso:** ogni container si riempie il più possibile e il resto passa al successivo, quindi l'ultimo container può essere poco pieno. Non c'è bilanciamento del peso tra container.
-- **Tempi:** con molti colli e 4-5 container il calcolo può durare alcuni secondi (circa 7 s per 200 europallet su 4 × 40'). La pagina resta ferma durante il calcolo.
+- **Tempi:** il calcolo dura al massimo circa 8-10 s (di solito molto meno). La pagina resta ferma durante il calcolo.
 - **Peso sopra i colli:** non c'è un limite di peso caricabile sopra un collo. Il baricentro lungo la lunghezza è solo mostrato, non ottimizzato.
 - **Colli sotto una sporgenza:** non si possono mettere colli sotto una parte sporgente di un collo già appoggiato.
 
@@ -104,6 +108,6 @@ La logica di calcolo è tra i commenti `CORE-START` e `CORE-END`. È fatta di fu
 - **File unico:** niente nuove dipendenze se non servono. Se servono, usa un CDN (cdnjs o jsdelivr) con versione fissa.
 - **Comportamento:** non cambiare il sistema di coordinate o il formato dei fogli Excel senza mantenere la compatibilità con i file già salvati.
 - **Test:** dopo ogni modifica alla logica, rifai i test con Node descritti sopra.
-- **Versione:** la costante `APP_VERSION` (nel blocco interfaccia di `index.html`) si vede nel piè di pagina. Aggiornala a ogni rilascio: terzo numero per correzioni, secondo per nuove funzioni, primo per cambi che rompono la compatibilità (file Excel o dati salvati). 1.0.0 = container singolo, 1.1.0 = più container e soluzioni alternative.
+- **Versione:** la costante `APP_VERSION` (nel blocco interfaccia di `index.html`) si vede nel piè di pagina. Aggiornala a ogni rilascio: terzo numero per correzioni, secondo per nuove funzioni, primo per cambi che rompono la compatibilità (file Excel o dati salvati). 1.0.0 = container singolo, 1.1.0 = più container e soluzioni alternative, 1.2.0 = container preferiti e ricerca migliore.
 - **Esempio:** "Carica esempio" usa `SAMPLE`, pensato per dare 2 container nella soluzione migliore e un'alternativa con 3. Se cambi l'algoritmo, controlla che lo mostri ancora.
 - **Commit:** non inserire mai la riga `Co-Authored-By` (né altre righe di attribuzione) nei messaggi di commit. Il messaggio deve avere al massimo 3 righe.
