@@ -92,7 +92,8 @@ details.settings summary{cursor:pointer;font-weight:600;padding:6px 0}
 .settings input[type=number],.settings input[type=text]{width:100%;min-width:64px;padding:5px;border:1px solid var(--line);border-radius:5px;background:var(--surface)}
 .rules{display:flex;flex-wrap:wrap;gap:10px 24px;margin:14px 0 8px}
 .rules label{display:flex;flex-direction:column;font-size:14px;color:var(--muted);gap:3px}
-.rules input{width:110px;padding:5px;border:1px solid var(--line);border-radius:5px;background:var(--surface)}
+.rules input,.rules select{width:110px;padding:5px;border:1px solid var(--line);border-radius:5px;background:var(--surface)}
+.rules select{width:auto}
 
 /* plan */
 .summary{display:flex;flex-wrap:wrap;gap:14px 34px;align-items:flex-end}
@@ -224,7 +225,7 @@ svg.plan text{font-family:"Bahnschrift","Roboto Condensed","Arial Narrow",sans-s
         <summary>Container e regole</summary>
         <div class="tbl-wrap">
           <table>
-            <thead><tr><th>Usa</th><th>Preferito</th><th>Nome</th><th>Lungh. interna cm</th><th>Largh. cm</th><th>Altezza cm</th><th>Porta largh. cm</th><th>Porta alt. cm</th><th>Peso max kg</th></tr></thead>
+            <thead><tr><th>Usa</th><th>Preferito</th><th>Nome</th><th>Lungh. interna cm</th><th>Largh. cm</th><th>Altezza cm</th><th>Porta largh. cm</th><th>Porta alt. cm</th><th>Peso max kg</th><th>Costo</th></tr></thead>
             <tbody id="contBody"></tbody>
           </table>
         </div>
@@ -234,7 +235,13 @@ svg.plan text{font-family:"Bahnschrift","Roboto Condensed","Arial Narrow",sans-s
           <label>Appoggio minimo della base (%)<input type="number" id="oMin" min="30" max="100" step="5"></label>
           <label>Numero massimo di container (da 1 a 5)<input type="number" id="oCont" min="1" max="5" step="1"></label>
           <label>Altre soluzioni: riempimento più basso al massimo del (%)<input type="number" id="oGap" min="0" max="50" step="5"></label>
+          <label>Metodo di calcolo<select id="oAlgo">
+            <option value="std">Normale</option>
+            <option value="cost">Per costo (nuovo)</option>
+            <option value="both">Confronta i due metodi</option>
+          </select></label>
         </div>
+        <p class="hint">Metodo per costo: parte dai container che costano meno e ne aumenta la misura o il numero finché non entra tutto. Prova ogni combinazione per 5 secondi, al massimo 1 minuto in tutto. Costo 0 = non usare quel container con questo metodo.</p>
         <p class="hint">Altre soluzioni: con 10%, se la soluzione migliore riempie l'80%, ti propongo anche quelle che riempiono almeno il 72%. Al massimo 3 soluzioni.</p>
         <button class="btn" id="bResetCont">Ripristina valori standard</button>
         <p class="hint">Usa = il programma può sceglierlo. Preferito = a parità di numero di container, il programma sceglie prima questi.</p>
@@ -332,14 +339,16 @@ svg.plan text{font-family:"Bahnschrift","Roboto Condensed","Arial Narrow",sans-s
 // ===================== CORE-START (logica di calcolo) =====================
 const EPS = 0.01;
 const DEFAULT_CONTAINERS = [
-  {name:"20' Standard",  L:589,  W:235, H:239, doorW:234, doorH:228, maxKg:28200, use:true, pref:true},
-  {name:"40' Standard",  L:1203, W:235, H:239, doorW:234, doorH:228, maxKg:26700, use:true, pref:true},
-  {name:"40' High Cube", L:1203, W:235, H:269, doorW:234, doorH:258, maxKg:26500, use:true, pref:false},
-  {name:"45' High Cube", L:1355, W:235, H:269, doorW:234, doorH:258, maxKg:27600, use:true, pref:false}
+  {name:"20' Standard",  L:589,  W:235, H:239, doorW:234, doorH:228, maxKg:28200, use:true, pref:true, cost:1},
+  {name:"40' Standard",  L:1203, W:235, H:239, doorW:234, doorH:228, maxKg:26700, use:true, pref:true, cost:1.8},
+  {name:"40' High Cube", L:1203, W:235, H:269, doorW:234, doorH:258, maxKg:26500, use:true, pref:false, cost:1.98},
+  {name:"45' High Cube", L:1355, W:235, H:269, doorW:234, doorH:258, maxKg:27600, use:true, pref:false, cost:0}
 ];
 const TIME_LIMIT = 8000;   // ms per la ricerca di soluzioni migliori
 const EFFORT = 24;         // ordini di carico variati per ogni container nella ricerca migliore
-const DEFAULT_OPTS = {tol:5, maxSup:2, minSup:80, maxCont:5, altGap:10};
+const STEP_TIME = 5000;    // metodo per costo: ms per ogni combinazione di container
+const COST_LIMIT = 60000;  // metodo per costo: tempo massimo totale in ms
+const DEFAULT_OPTS = {tol:5, maxSup:2, minSup:80, maxCont:5, altGap:10, algo:'std'};
 
 function ov(a0,a1,b0,b1){ return Math.min(a1,b1)-Math.max(a0,b0); }
 function fpArea(b,x,y,l,w){
@@ -486,22 +495,61 @@ function bestPack(units,c,opts,effort,deadline){
 // prune=true: si ferma appena il resto non può più entrare nei container rimasti (uvol=Infinity).
 // over = volume che resta fuori (con prune: volume in più rispetto allo spazio rimasto)
 function packCombo(units,cis,containers,opts,cache,prune,effort,deadline){
-  let rest=units; const conts=[];
+  let rest=units, g=null; const conts=[];
   for(let j=0;j<cis.length;j++){
     const ci=cis[j];
     if(!rest.length){ conts.push({ci,boxes:[]}); continue; }
     if(prune && j>0){
       const left=cis.slice(j), rv=rest.reduce((s,u)=>s+vol(u),0), lv=left.reduce((s,x)=>s+cvol(containers[x]),0);
-      if(rv>lv+EPS || rest.reduce((s,u)=>s+u.kg,0)>left.reduce((s,x)=>s+maxKgOf(containers[x]),0)+EPS)
-        return {conts,unplaced:rest,uvol:Infinity,over:Math.max(rv-lv,EPS)};
+      if(rv>lv+EPS || rest.reduce((s,u)=>s+u.kg,0)>left.reduce((s,x)=>s+maxKgOf(containers[x]),0)+EPS){
+        g={conts,unplaced:rest,uvol:Infinity,over:Math.max(rv-lv,EPS)}; break;
+      }
     }
-    const key=ci+'|'+(effort||0)+'|'+rest.map(u=>u.uid).join(',');
-    let r=cache&&cache.get(key);
-    if(!r){ r=bestPack(rest,containers[ci],opts,effort,deadline); if(cache) cache.set(key,r); }
+    const r=cachedPack(rest,ci,containers,opts,cache,effort,deadline);
     conts.push({ci,boxes:r.boxes}); rest=r.unplaced;
   }
+  if(!g){ const uvol=rest.reduce((s,u)=>s+vol(u),0); g={conts,unplaced:rest,uvol,over:uvol}; }
+  if(cis.length<2 || g.uvol<=EPS) return g;
+  // il riempimento goloso può lasciare spazi che solo colli già usati prima avrebbero riempito: prova anche a dividere
+  const s=packSplit(units,cis,containers,opts,cache,effort,deadline);
+  return s.uvol<g.uvol-EPS ? s : g;
+}
+function cachedPack(us,ci,containers,opts,cache,effort,deadline){
+  const key=ci+'|'+(effort||0)+'|'+us.map(u=>u.uid).join(',');
+  let r=cache&&cache.get(key);
+  if(!r){ r=bestPack(us,containers[ci],opts,effort,deadline); if(cache) cache.set(key,r); }
+  return r;
+}
+// divide ogni tipo di collo tra i container in proporzione al loro volume, poi i colli rimasti fuori vanno dove c'è posto
+function packSplit(units,cis,containers,opts,cache,effort,deadline){
+  const n=cis.length, cv=cis.map(ci=>cvol(containers[ci]));
+  const parts=cis.map(()=>[]), pv=cis.map(()=>0), groups=new Map();
+  for(const u of units.slice().sort(tie)){
+    const k=u.l+'x'+u.w+'x'+u.h+'|'+u.kg+(u.stack?'s':'n');
+    if(!groups.has(k)) groups.set(k,[]); groups.get(k).push(u);
+  }
+  for(const g of groups.values()){
+    const cnt=cis.map(()=>0);
+    for(const u of g){
+      let bj=-1, bs=Infinity;
+      for(let j=0;j<n;j++){
+        if(!fitsDoor(u,containers[cis[j]])) continue;
+        const sc=(cnt[j]+1)/cv[j]+(pv[j]+vol(u))/cv[j]*1e-9;
+        if(sc<bs-1e-15){ bs=sc; bj=j; }
+      }
+      if(bj<0) bj=0;
+      cnt[bj]++; parts[bj].push(u); pv[bj]+=vol(u);
+    }
+  }
+  let rest=[];
+  const res=parts.map((p,j)=>{ const r=cachedPack(p,cis[j],containers,opts,cache,effort,deadline); rest=rest.concat(r.unplaced); return r; });
+  for(let j=0;j<n && rest.length;j++){
+    const r=cachedPack(res[j].boxes.map(toUnit).concat(rest).sort(tie),cis[j],containers,opts,cache,effort,deadline);
+    const ov=rest.reduce((s,u)=>s+vol(u),0);
+    if(r.uvol<ov-EPS){ res[j]=r; rest=r.unplaced; }
+  }
   const uvol=rest.reduce((s,u)=>s+vol(u),0);
-  return {conts,unplaced:rest,uvol,over:uvol};
+  return {conts:cis.map((ci,j)=>({ci,boxes:res[j].boxes})),unplaced:rest,uvol,over:uvol};
 }
 const cloneSol=(r,fit,extra)=>({
   conts:r.conts.map(k=>({ci:k.ci,boxes:k.boxes.map(b=>({...b}))})),
@@ -607,6 +655,64 @@ function autoPlan(units,containers,opts){
   }
   sols.forEach(s=>s.notes=notes.slice());
   return sols;
+}
+// metodo per costo: ogni container ha un costo (20'=1, 40'=1.8, 40' HC=1.98; 0 = non usarlo).
+// Prova le combinazioni dalla meno costosa che ha volume e peso sufficienti. Ogni combinazione ha STEP_TIME ms:
+// se non entra tutto passa alla successiva (es. un 20' diventa un 40'), finché non trova una soluzione.
+function autoPlanCost(units,containers,opts){
+  const t0=Date.now(), step=opts.stepTime==null?STEP_TIME:opts.stepTime;
+  const end=t0+(opts.costLimit==null?COST_LIMIT:opts.costLimit);
+  const list=containers.map((c,i)=>({c,i})).filter(o=>o.c.use && o.c.cost>0).sort((a,b)=>cvol(b.c)-cvol(a.c));
+  if(!list.length) return null;
+  const maxN=Math.max(1,Math.min(5,Math.round(opts.maxCont||1)));
+  const notes=[];
+  const noWay=units.filter(u=>!list.some(o=>fitsDoor(u,o.c)));
+  const todo=units.filter(u=>!noWay.includes(u));
+  if(noWay.length) notes.push(noWay.length+(noWay.length===1?' collo non passa':' colli non passano')+' dalla porta di nessun container.');
+  const uv=todo.reduce((s,u)=>s+vol(u),0), kg=todo.reduce((s,u)=>s+(u.kg||0),0);
+  const V=cis=>cis.reduce((s,ci)=>s+cvol(containers[ci]),0);
+  const cost=cis=>cis.reduce((s,ci)=>s+containers[ci].cost,0);
+  const rankCmp=(a,b)=>(cost(a)-cost(b))||(a.length-b.length)||(V(a)-V(b));
+  const possible=cis=>V(cis)>=uv-EPS && cis.reduce((s,ci)=>s+maxKgOf(containers[ci]),0)>=kg-EPS &&
+    todo.every(u=>cis.some(ci=>fitsDoor(u,containers[ci])));
+  const all=[];
+  const rec=(start,acc)=>{ if(acc.length) all.push(acc.slice()); if(acc.length===maxN) return;
+    for(let j=start;j<list.length;j++){ acc.push(list[j].i); rec(j,acc); acc.pop(); } };
+  rec(0,[]);
+  const combos=all.filter(possible).sort(rankCmp);
+  // se una combinazione non basta, non basta neanche una con container tutti uguali o più piccoli
+  const ge=(a,b)=>['L','W','H','doorW','doorH'].every(k=>a[k]>=b[k]-EPS) && maxKgOf(a)>=maxKgOf(b)-EPS;
+  const covers=(big,small)=>{ if(small.length>big.length) return false; const free=big.slice();
+    return small.every(ci=>{ const j=free.findIndex(x=>ge(containers[x],containers[ci])); if(j<0) return false; free.splice(j,1); return true; }); };
+  const cache=new Map(), failed=[];
+  let found=null, fb=null, tried=0;
+  for(const cis of combos){
+    if(Date.now()>end) break;
+    if(failed.some(f=>covers(f,cis))) continue;
+    tried++;
+    const dl=Math.min(end,Date.now()+step);
+    let r=null;
+    for(const eff of [0,EFFORT,EFFORT*5,EFFORT*20]){
+      if(eff && Date.now()>dl) break;
+      const x=packCombo(todo,cis,containers,opts,cache,false,eff,dl);
+      if(!r || x.uvol<r.uvol-EPS) r=x;
+      if(!x.unplaced.length) break;
+    }
+    if(!r.unplaced.length){ found=r; break; }
+    failed.push(cis);
+    if(!fb || r.uvol<fb.uvol-EPS) fb=r;
+  }
+  const secs=(Date.now()-t0)/1000;
+  notes.push('Metodo per costo: '+(tried===1?'provata 1 combinazione':'provate '+tried+' combinazioni')+' in '+secs.toFixed(1).replace('.',',')+' secondi.');
+  if(!found){
+    if(!fb) fb=packCombo(todo,Array(maxN).fill(list[0].i),containers,opts,cache,false,EFFORT,Date.now()+step);
+    notes.push(Date.now()>end?'Tempo finito: questa è la soluzione migliore trovata, ma non entra tutto.':'Nessuna combinazione basta per tutti i colli.');
+    const s=cloneSol(fb,false,noWay); s.notes=notes; s.method='cost'; return [s];
+  }
+  found={...found,conts:found.conts.filter(k=>k.boxes.length)};
+  if(found.conts.length>1) notes.push('Il carico è diviso su '+found.conts.length+' container.');
+  const s=cloneSol(found,!noWay.length,noWay); s.notes=notes; s.method='cost';
+  return [s];
 }
 // livelli ed errori di ogni collo
 function analyze(boxes,c,opts){
@@ -737,7 +843,7 @@ const PALETTE=['#D2AE74','#93BBA6','#93AED3','#CC98AA','#DDBB5E','#7FBDBD','#BBA
 const colorOf=row=>PALETTE[row%PALETTE.length];
 const fmt=(n,d=0)=>Number(n).toLocaleString('it-IT',{minimumFractionDigits:d,maximumFractionDigits:d});
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const APP_VERSION='1.2.0';
+const APP_VERSION='1.3.0';
 // esempio: la soluzione migliore usa 2 container, l'alternativa 3
 const SAMPLE=[
   {code:'PAL-A',l:120,w:80,h:110,kg:450,qty:24,stack:true},
@@ -762,7 +868,7 @@ function load(){
     const d=JSON.parse(localStorage.getItem(KEY)||'null');
     if(d && Array.isArray(d.rows)){
       S.rows=d.rows; if(Array.isArray(d.containers)&&d.containers.length) S.containers=d.containers; if(d.opts) S.opts={...DEFAULT_OPTS,...d.opts};
-      S.containers.forEach(c=>{ if(c.pref==null){ const def=DEFAULT_CONTAINERS.find(x=>x.name===c.name); c.pref=def?def.pref:false; } });
+      S.containers.forEach(c=>{ if(c.pref==null){ const def=DEFAULT_CONTAINERS.find(x=>x.name===c.name); c.pref=def?def.pref:false; } if(c.cost==null){ const def=DEFAULT_CONTAINERS.find(x=>x.name===c.name); c.cost=def?def.cost:0; } });
       setSols(Array.isArray(d.sols)?d.sols.map(normPlan).filter(Boolean):(d.plan?[normPlan(d.plan)]:[]),d.si);
       S.planRowsKey=d.planRowsKey||''; return true;
     }
@@ -884,13 +990,14 @@ function renderSettings(){
     <td><input type="checkbox" data-k="pref" ${c.pref?'checked':''} aria-label="Preferito ${esc(c.name)}"></td>
     <td><input type="text" data-k="name" value="${esc(c.name)}"></td>
     ${['L','W','H','doorW','doorH','maxKg'].map(k=>`<td><input type="number" min="1" data-k="${k}" value="${c[k]}"></td>`).join('')}
+    <td><input type="number" min="0" step="0.1" data-k="cost" value="${c.cost||0}" aria-label="Costo ${esc(c.name)}"></td>
   </tr>`).join('');
   $('#oTol').value=S.opts.tol; $('#oMax').value=S.opts.maxSup; $('#oMin').value=S.opts.minSup;
-  $('#oCont').value=S.opts.maxCont; $('#oGap').value=S.opts.altGap;
+  $('#oCont').value=S.opts.maxCont; $('#oGap').value=S.opts.altGap; $('#oAlgo').value=S.opts.algo||'std';
 }
 $('#contBody').addEventListener('input',e=>{
   const tr=e.target.closest('tr'); const c=S.containers[+tr.dataset.i], k=e.target.dataset.k;
-  if(k==='use') c.use=e.target.checked; else if(k==='pref') c.pref=e.target.checked; else if(k==='name') c.name=e.target.value; else { const v=parseNum(e.target.value); if(v>0) c[k]=v; }
+  if(k==='use') c.use=e.target.checked; else if(k==='pref') c.pref=e.target.checked; else if(k==='name') c.name=e.target.value; else { const v=parseNum(e.target.value); if(v>0 || (k==='cost' && v===0)) c[k]=v; }
   save(); updateStale();
 });
 ['oTol','oMax','oMin','oCont','oGap'].forEach(id=>$('#'+id).addEventListener('input',()=>{
@@ -900,6 +1007,7 @@ $('#contBody').addEventListener('input',e=>{
   if(n>=1&&n<=5) S.opts.maxCont=Math.round(n); if(g>=0&&g<=100) S.opts.altGap=g;
   save(); updateStale();
 }));
+$('#oAlgo').addEventListener('change',e=>{ S.opts.algo=e.target.value; save(); updateStale(); });
 $('#bResetCont').onclick=()=>{ S.containers=JSON.parse(JSON.stringify(DEFAULT_CONTAINERS)); S.opts={...DEFAULT_OPTS}; renderSettings(); save(); updateStale(); toast('Valori standard ripristinati'); };
 
 // ---------- calcolo ----------
@@ -908,7 +1016,8 @@ function calculate(forceCis){
   const units=expandRows(S.rows);
   const bad=S.rows.filter(r=>!(r.l>0&&r.w>0&&r.h>0)).length;
   if(!units.length){ toast('Inserisci almeno un collo con le misure.'); return; }
-  $('#calcMsg').textContent='Calcolo in corso… Può servire fino a 10 secondi.'; $('#bCalc').disabled=true;
+  const algo=forceCis?'std':(S.opts.algo||'std');
+  $('#calcMsg').textContent='Calcolo in corso… '+(algo==='std'?'Può servire fino a 10 secondi.':'Può servire fino a un minuto o poco più.'); $('#bCalc').disabled=true;
   setTimeout(()=>{
     const badNote=bad?bad+(bad===1?' riga senza misure non è stata considerata.':' righe senza misure non sono state considerate.'):'';
     if(forceCis){
@@ -918,7 +1027,18 @@ function calculate(forceCis){
       if(keep) sols[S.si]=plan;
       setSols(keep?sols:[plan],keep?S.si:0);
     } else {
-      const sols=autoPlan(units,S.containers,S.opts);
+      const t0=Date.now();
+      let sols=algo==='cost'?null:autoPlan(units,S.containers,S.opts);
+      const t1=Date.now();
+      if(sols) sols.forEach(x=>x.method='std');
+      if(algo!=='std'){
+        const c=autoPlanCost(units,S.containers,S.opts);
+        if(c && algo==='both' && sols){
+          const sec=ms=>(ms/1000).toFixed(1).replace('.',',');
+          const msg='Confronto: metodo normale '+sec(t1-t0)+' s, metodo per costo '+sec(Date.now()-t1)+' s.';
+          sols=c.concat(sols); sols.forEach(x=>x.notes.unshift(msg));
+        } else sols=c||sols;
+      }
       if(!sols){ $('#calcMsg').textContent=''; $('#bCalc').disabled=false; toast('Scegli almeno un container in "Container e regole".'); return; }
       if(badNote) sols.forEach(s=>s.notes.push(badNote));
       setSols(sols,0);
@@ -957,13 +1077,14 @@ function solName(p){
   const n=new Map(); p.conts.forEach(k=>n.set(k.ci,(n.get(k.ci)||0)+1));
   return [...n].map(([ci,q])=>q+' × '+S.containers[ci].name).join(' + ');
 }
+const solCost=p=>p.conts.reduce((s,k)=>s+(S.containers[k.ci].cost||0),0);
 let AN={level:new Map(),errs:new Map()};
 function renderSols(){
   const el=$('#solBox');
   el.classList.toggle('hidden',S.sols.length<2);
   if(S.sols.length<2) return;
-  el.innerHTML=`<h3 class="sub">Soluzioni proposte</h3><p class="hint" style="margin:0">Hanno un riempimento simile. Scegli quella che preferisci: la soluzione 1 usa meno container.</p>
-    <div class="sols">${S.sols.map((s,i)=>`<button class="sol" data-si="${i}" aria-pressed="${i===S.si}"><b>Soluzione ${i+1}</b><span>${esc(solName(s))}</span><span class="hint">Volume usato ${fmt(solFill(s)*100)}%</span></button>`).join('')}</div>`;
+  el.innerHTML=`<h3 class="sub">Soluzioni proposte</h3><p class="hint" style="margin:0">${S.sols.some(x=>x.method==='cost')&&S.sols.some(x=>x.method==='std')?'Confronto tra i due metodi: la soluzione 1 è del metodo per costo, le altre del metodo normale.':'Hanno un riempimento simile. Scegli quella che preferisci: la soluzione 1 usa meno container.'}</p>
+    <div class="sols">${S.sols.map((s,i)=>`<button class="sol" data-si="${i}" aria-pressed="${i===S.si}"><b>Soluzione ${i+1}</b><span>${esc(solName(s))}</span><span class="hint">Volume usato ${fmt(solFill(s)*100)}%${solCost(s)?' · costo '+(+solCost(s).toFixed(2)).toLocaleString('it-IT'):''}</span>${s.method&&S.sols.some(x=>x.method&&x.method!==s.method)?`<span class="hint">${s.method==='cost'?'Metodo per costo':'Metodo normale'}${s.fit?'':' · non entra tutto'}</span>`:''}</button>`).join('')}</div>`;
 }
 $('#solBox').addEventListener('click',e=>{ const b=e.target.closest('[data-si]'); if(!b) return; setSols(S.sols,+b.dataset.si); save(); renderPlan(); });
 function renderContTabs(){

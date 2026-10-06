@@ -9,7 +9,7 @@ const m = html.match(/\/\/ =+ CORE-START[\s\S]*?\/\/ =+ CORE-END =+/);
 if (!m) { console.error('Blocco CORE non trovato in index.html'); process.exit(1); }
 const ctx = {};
 vm.createContext(ctx);
-vm.runInContext(m[0] + '\n;Object.assign(this,{EPS,DEFAULT_CONTAINERS,DEFAULT_OPTS,expandRows,bestPack,autoPlan,planCombo,analyze,parseTable,cvol});', ctx);
+vm.runInContext(m[0] + '\n;Object.assign(this,{EPS,DEFAULT_CONTAINERS,DEFAULT_OPTS,expandRows,bestPack,autoPlan,autoPlanCost,planCombo,analyze,parseTable,cvol});', ctx);
 const C = ctx;
 
 let fail = 0, pass = 0;
@@ -154,6 +154,38 @@ function time(fn) { const t = Date.now(); const r = fn(); return [r, Date.now() 
 {
   const r = C.parseTable([['Codice', 'Lunghezza', 'Larghezza', 'Altezza', 'Peso', 'Quantità', 'Sovrapponibile'], ['A', '1,2', '0,8', '1', '100', '2', 'no']]);
   check('parseTable: virgola e metri -> cm', r.rows.length === 1 && r.rows[0].l === 120 && r.rows[0].h === 100 && r.rows[0].stack === false && r.rows[0].qty === 2);
+}
+
+// 12. esempio: colli già messi nel primo container possono servire a riempire gli spazi del secondo
+{
+  const cs = conts(), o = opts();
+  const u = units([
+    { code: 'PAL-A', l: 120, w: 80, h: 110, kg: 450, qty: 24, stack: true },
+    { code: 'PAL-B', l: 120, w: 100, h: 105, kg: 600, qty: 10, stack: true },
+    { code: 'CASSA 1', l: 200, w: 110, h: 90, kg: 380, qty: 8, stack: true },
+    { code: 'CASSA 2', l: 150, w: 90, h: 60, kg: 120, qty: 10, stack: false },
+    { code: 'MACCHINA', l: 240, w: 150, h: 180, kg: 1500, qty: 3, stack: false }]);
+  const [sols, ms] = time(() => C.autoPlan(u, cs, o));
+  const s = sols[0];
+  console.log('     soluzioni: ' + sols.map(x => names(x, cs)).join(' | ') + '  (' + ms + ' ms)');
+  check('esempio: 2 x 40\' Standard', s.fit && names(s, cs) === "40' Standard + 40' Standard", names(s, cs));
+  check('esempio: nessun errore, ogni collo una volta sola', noErrors(s, cs, o) && uniqueUids(s) && placed(s) === u.length);
+  check('esempio: c\'è un\'alternativa con 3 container', sols.some(x => x.conts.length === 3));
+}
+
+// 13. metodo per costo
+{
+  const cs = conts(), o = opts({ stepTime: 1500 });
+  const s1 = C.autoPlanCost(units([{ code: 'EUR', l: 120, w: 80, h: 150, kg: 300, qty: 11, stack: false }]), cs, o)[0];
+  check('costo: 11 europallet -> 1 x 20\'', s1.fit && names(s1, cs) === "20' Standard", names(s1, cs));
+  const u = units([{ code: 'EUR', l: 120, w: 80, h: 130, kg: 350, qty: 40, stack: false }]);
+  const s2 = C.autoPlanCost(u, cs, o)[0];
+  const cost = s2.conts.reduce((a, k) => a + cs[k.ci].cost, 0);
+  check('costo: 40 europallet non sovrapp. -> tutto dentro, senza errori', s2.fit && placed(s2) === u.length && noErrors(s2, cs, o) && uniqueUids(s2), names(s2, cs));
+  check('costo: non usa il 45\' (costo 0)', s2.conts.every(k => cs[k.ci].cost > 0));
+  check('costo: 40 europallet -> costo al massimo 3,6 (2 x 40\')', cost <= 3.6 + 1e-9, names(s2, cs) + ' costo ' + cost);
+  const tall = C.autoPlanCost(units([{ code: 'ALTA', l: 120, w: 100, h: 250, kg: 500, qty: 4, stack: false }]), cs, o)[0];
+  check('costo: colli alti 250 -> 40\' High Cube', tall.fit && names(tall, cs) === "40' High Cube", names(tall, cs));
 }
 
 console.log('\n' + pass + ' ok, ' + fail + ' falliti');
