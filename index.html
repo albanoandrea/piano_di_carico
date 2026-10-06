@@ -1,0 +1,1112 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Piano di carico container</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{
+  --bg:#E7EBEE; --surface:#FFFFFF; --surface2:#F2F4F6; --ink:#1B2631; --muted:#5A6A77; --line:#C8D1D7;
+  --steel:#22547B; --steel2:#1C4767; --steel-ink:#FFFFFF; --floor:#F8F8F5; --grid:#DDE2E5;
+  --yellow:#F2C200; --red:#C4332A; --ok:#2F7A4C; --box-ink:#1B2631;
+  color-scheme:light;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#10161C; --surface:#18212A; --surface2:#1F2A34; --ink:#E3E9ED; --muted:#93A2AE; --line:#2F3C47;
+    --steel:#2C6593; --steel2:#235276; --steel-ink:#FFFFFF; --floor:#1D2730; --grid:#2A3641;
+    --yellow:#F2C200; --red:#E2594F; --ok:#5DB27F; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#10161C; --surface:#18212A; --surface2:#1F2A34; --ink:#E3E9ED; --muted:#93A2AE; --line:#2F3C47;
+  --steel:#2C6593; --steel2:#235276; --steel-ink:#FFFFFF; --floor:#1D2730; --grid:#2A3641;
+  --yellow:#F2C200; --red:#E2594F; --ok:#5DB27F; color-scheme:dark;
+}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Barlow",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:16px;line-height:1.45}
+h1,h2,h3,.cond{font-family:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;font-weight:700;letter-spacing:.01em}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--yellow);outline-offset:2px}
+
+/* header: corrugated steel, like the side of a container */
+.top{background:var(--steel) repeating-linear-gradient(90deg,transparent 0 22px,rgba(255,255,255,.07) 22px 26px,rgba(0,0,0,.10) 26px 30px,transparent 30px 52px);color:var(--steel-ink)}
+.top-in{max-width:1280px;margin:0 auto;padding:18px 20px 0;display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px 28px}
+.top h1{margin:0 0 12px;font-size:34px;line-height:1}
+.top p{margin:0 0 14px;max-width:60ch;opacity:.9;font-size:15px}
+.tabs{display:flex;gap:4px;margin-left:auto;align-self:flex-end}
+.tab{border:0;background:rgba(255,255,255,.14);color:var(--steel-ink);padding:10px 18px;border-radius:8px 8px 0 0;cursor:pointer;font-family:"Barlow Condensed","Arial Narrow",sans-serif;font-weight:600;font-size:19px}
+.tab[aria-selected="true"]{background:var(--bg);color:var(--ink)}
+.tab:disabled{opacity:.45;cursor:not-allowed}
+
+main{max-width:1280px;margin:0 auto;padding:20px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.btn{border:1px solid var(--line);background:var(--surface);padding:8px 14px;border-radius:7px;cursor:pointer;font-weight:500;white-space:nowrap}
+.btn:hover{background:var(--surface2)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.primary{background:var(--steel);border-color:var(--steel);color:var(--steel-ink);font-weight:600}
+.btn.primary:hover{background:var(--steel2)}
+.btn.big{padding:12px 22px;font-size:18px}
+.btn.danger{color:var(--red)}
+.hint{color:var(--muted);font-size:14px}
+.spacer{flex:1}
+
+/* table */
+.tbl-wrap{overflow-x:auto;margin-top:12px;border:1px solid var(--line);border-radius:8px}
+table.colli{border-collapse:collapse;width:100%;min-width:760px}
+.colli th{background:var(--surface2);text-align:left;font-weight:600;font-size:14px;padding:8px;border-bottom:1px solid var(--line);white-space:nowrap}
+.colli td{padding:3px 4px;border-bottom:1px solid var(--line)}
+.colli tr:last-child td{border-bottom:0}
+.colli input[type=text],.colli input[type=number]{width:100%;min-width:60px;border:1px solid transparent;background:transparent;padding:6px;border-radius:5px}
+.colli input:hover{border-color:var(--line)}
+.colli input:focus{border-color:var(--steel);background:var(--surface)}
+.colli input.bad{border-color:var(--red);background:color-mix(in srgb,var(--red) 10%,transparent)}
+.colli td.num{color:var(--muted);width:36px;text-align:center;font-size:14px}
+.colli td.chk{text-align:center}
+.colli input[type=checkbox]{width:20px;height:20px;accent-color:var(--steel)}
+.swatch{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:4px;vertical-align:-1px;border:1px solid rgba(0,0,0,.25)}
+.del{border:0;background:transparent;color:var(--muted);cursor:pointer;font-size:20px;line-height:1;padding:4px 8px;border-radius:5px}
+.del:hover{color:var(--red);background:var(--surface2)}
+.totals{margin-top:10px;display:flex;flex-wrap:wrap;gap:6px 22px;color:var(--muted);font-size:15px}
+.totals b{color:var(--ink);font-weight:600}
+.calc-bar{margin-top:18px;display:flex;flex-wrap:wrap;align-items:center;gap:14px}
+
+details.settings{margin-top:18px}
+details.settings summary{cursor:pointer;font-weight:600;padding:6px 0}
+.settings table{border-collapse:collapse;min-width:720px;width:100%}
+.settings th{font-size:13px;color:var(--muted);text-align:left;font-weight:500;padding:4px}
+.settings td{padding:2px 4px}
+.settings input[type=number],.settings input[type=text]{width:100%;min-width:64px;padding:5px;border:1px solid var(--line);border-radius:5px;background:var(--surface)}
+.rules{display:flex;flex-wrap:wrap;gap:10px 24px;margin:14px 0 8px}
+.rules label{display:flex;flex-direction:column;font-size:14px;color:var(--muted);gap:3px}
+.rules input{width:110px;padding:5px;border:1px solid var(--line);border-radius:5px;background:var(--surface)}
+
+/* plan */
+.summary{display:flex;flex-wrap:wrap;gap:14px 34px;align-items:flex-end}
+.cont-name{font-size:34px;line-height:1;margin:0}
+.stat{display:flex;flex-direction:column}
+.stat .v{font-family:"Barlow Condensed","Arial Narrow",sans-serif;font-weight:600;font-size:24px;line-height:1.1}
+.stat .k{font-size:13px;color:var(--muted)}
+.stat.warn .v{color:var(--red)}
+.notes{margin:12px 0 0;padding:0;list-style:none;font-size:14px;color:var(--muted)}
+.notes li{margin:2px 0}
+.notes li.err{color:var(--red);font-weight:500}
+.stale{background:color-mix(in srgb,var(--yellow) 25%,var(--surface));border:1px solid var(--yellow);padding:8px 12px;border-radius:7px;margin-bottom:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+
+.toolbar{margin:16px 0 8px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+.seg button{border:0;background:var(--surface);padding:7px 12px;cursor:pointer;border-right:1px solid var(--line)}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed="true"]{background:var(--steel);color:var(--steel-ink)}
+select.cont-sel{padding:7px 10px;border:1px solid var(--line);border-radius:7px;background:var(--surface)}
+
+.plan-wrap{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:6px}
+svg.plan{display:block;width:100%;height:auto;user-select:none;-webkit-user-select:none}
+svg.plan text{font-family:"Barlow Condensed","Arial Narrow",sans-serif;font-weight:600}
+.wall{fill:var(--steel)}
+.floor{fill:var(--floor)}
+.gridl{stroke:var(--grid);stroke-width:1.2}
+.ruler{fill:var(--muted);font-size:13px}
+.door{stroke:var(--yellow);stroke-width:6;stroke-dasharray:14 8}
+.side-label{fill:var(--muted);font-size:15px}
+.bx{cursor:grab;touch-action:none}
+.bx.dragging{cursor:grabbing;opacity:.85}
+.bx rect.b{stroke:rgba(0,0,0,.55);stroke-width:1.5}
+.bx text{fill:var(--box-ink);text-anchor:middle;dominant-baseline:central;pointer-events:none}
+.bx.sel rect.b{stroke:var(--yellow);stroke-width:5}
+.bx.err rect.b{stroke:var(--red);stroke-width:4}
+.bx.sel.err rect.b{stroke:var(--yellow)}
+.bx.preview-bad rect.b{stroke:var(--red);stroke-width:5}
+.bx.preview-ok rect.b{stroke:var(--ok);stroke-width:5}
+.bx.ghost{opacity:.28;pointer-events:none}
+.badge circle{fill:var(--surface);stroke:rgba(0,0,0,.5);stroke-width:1.2}
+.badge text{fill:var(--ink)}
+
+.lower{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:16px;margin-top:16px}
+@media (max-width:900px){.lower{grid-template-columns:1fr}}
+.view3d{position:relative;height:380px;border-radius:8px;overflow:hidden;background:var(--surface2);touch-action:none;cursor:grab}
+.view3d canvas{display:block}
+.view3d .tip{position:absolute;left:10px;bottom:8px;font-size:13px;color:var(--muted);pointer-events:none}
+.info h3{margin:0 0 6px;font-size:22px}
+.info dl{display:grid;grid-template-columns:auto 1fr;gap:2px 12px;margin:8px 0;font-size:15px}
+.info dt{color:var(--muted)}
+.info dd{margin:0}
+.info .errs{color:var(--red);font-weight:500;margin:6px 0;padding-left:18px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.chip{border:1px solid var(--line);background:var(--surface);border-radius:6px;padding:5px 9px;cursor:pointer;font-size:14px;display:inline-flex;align-items:center;gap:6px}
+.chip:hover{border-color:var(--steel)}
+.sub{font-size:20px;margin:0 0 4px}
+
+.modal-bg{position:fixed;inset:0;background:rgba(10,20,30,.5);display:none;align-items:center;justify-content:center;padding:20px;z-index:20}
+.modal-bg.open{display:flex}
+.modal{background:var(--surface);border-radius:12px;padding:20px;width:min(640px,100%);max-height:90vh;overflow:auto}
+.modal h2{margin:0 0 6px;font-size:26px}
+.modal textarea{width:100%;height:220px;margin:10px 0;padding:10px;border:1px solid var(--line);border-radius:7px;background:var(--surface2);font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px}
+
+#toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:8px;font-size:15px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:30;max-width:90vw}
+#toast.show{opacity:1}
+.hidden{display:none!important}
+#printArea{display:none}
+@media (prefers-reduced-motion: reduce){#toast{transition:none}}
+@media print{
+  body{background:#fff;color:#000}
+  .top,main,#toast,.modal-bg{display:none!important}
+  #printArea{display:block;padding:0}
+  #printArea h1{font-size:26px;margin:0 0 4px}
+  #printArea h2{font-size:18px;margin:16px 0 6px;page-break-after:avoid}
+  #printArea .pv{page-break-inside:avoid;margin-bottom:10px}
+  #printArea table{border-collapse:collapse;width:100%;font-size:12px}
+  #printArea th,#printArea td{border:1px solid #999;padding:3px 6px;text-align:left}
+  .bx.ghost{opacity:.25}
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="top-in">
+    <div>
+      <h1>Piano di carico</h1>
+      <p>Inserisci i colli. Il programma sceglie il container più piccolo e prepara la disposizione. Poi puoi spostare i colli a mano.</p>
+    </div>
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" id="tab1" aria-selected="true">1. Colli</button>
+      <button class="tab" role="tab" id="tab2" aria-selected="false" disabled>2. Piano di carico</button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <!-- STEP 1 -->
+  <section id="step1">
+    <div class="panel">
+      <div class="row">
+        <button class="btn" id="bTpl">Scarica modello Excel</button>
+        <button class="btn" id="bFile">Carica file Excel</button>
+        <input type="file" id="fileIn" accept=".xlsx,.xls,.csv" class="hidden">
+        <button class="btn" id="bPaste">Incolla da Excel</button>
+        <button class="btn" id="bAdd">Aggiungi riga</button>
+        <span class="spacer"></span>
+        <button class="btn" id="bSample">Carica esempio</button>
+        <button class="btn danger" id="bClear">Svuota tabella</button>
+      </div>
+      <div class="tbl-wrap">
+        <table class="colli">
+          <thead><tr>
+            <th></th><th>Codice / descrizione</th><th>Lunghezza cm</th><th>Larghezza cm</th><th>Altezza cm</th><th>Peso kg (1 collo)</th><th>Quantità</th><th>Sovrapponibile</th><th></th>
+          </tr></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+      <div class="totals" id="totals"></div>
+      <p class="hint">Sovrapponibile = si può mettere un altro collo sopra. I colli possono girare ma non si ribaltano: l'altezza resta sempre quella.</p>
+
+      <details class="settings" id="settingsBox">
+        <summary>Container e regole</summary>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Usa</th><th>Nome</th><th>Lungh. interna cm</th><th>Largh. cm</th><th>Altezza cm</th><th>Porta largh. cm</th><th>Porta alt. cm</th><th>Peso max kg</th></tr></thead>
+            <tbody id="contBody"></tbody>
+          </table>
+        </div>
+        <div class="rules">
+          <label>Differenza altezza massima per appoggiare su 2 colli (cm)<input type="number" id="oTol" min="0" step="1"></label>
+          <label>Numero massimo di colli sotto<input type="number" id="oMax" min="1" max="4" step="1"></label>
+          <label>Appoggio minimo della base (%)<input type="number" id="oMin" min="30" max="100" step="5"></label>
+        </div>
+        <button class="btn" id="bResetCont">Ripristina valori standard</button>
+        <p class="hint">Le misure dei container cambiano un po' tra le compagnie: controlla quelle del tuo spedizioniere.</p>
+      </details>
+
+      <div class="calc-bar">
+        <button class="btn primary big" id="bCalc">Calcola piano di carico</button>
+        <span class="hint" id="calcMsg"></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- STEP 2 -->
+  <section id="step2" class="hidden">
+    <div id="staleBox" class="stale hidden">
+      <span>Hai cambiato la tabella dei colli dopo il calcolo.</span>
+      <button class="btn primary" id="bRecalc2">Ricalcola</button>
+    </div>
+    <div class="panel">
+      <div class="summary" id="summary"></div>
+      <ul class="notes" id="notes"></ul>
+    </div>
+
+    <div class="row toolbar">
+      <label class="hint" for="contSel">Container</label>
+      <select class="cont-sel" id="contSel"></select>
+      <button class="btn" id="bRecalc">Ricalcola</button>
+      <span class="spacer"></span>
+      <button class="btn" id="bPrint">Stampa</button>
+      <button class="btn" id="bXlsx">Scarica Excel</button>
+    </div>
+    <div class="row toolbar" style="margin-top:0">
+      <div class="seg" id="levelSeg" aria-label="Livello"></div>
+      <button class="btn" id="bRot" disabled>Ruota (R)</button>
+      <button class="btn" id="bRem" disabled>Togli dal container</button>
+      <span class="hint">Trascina i colli per spostarli. Vista dall'alto: porte a destra.</span>
+    </div>
+
+    <div class="plan-wrap" id="topWrap"></div>
+
+    <div class="lower">
+      <div class="panel">
+        <div class="row" style="margin-bottom:10px">
+          <div class="seg" id="viewSeg">
+            <button data-v="3d" aria-pressed="true">Vista 3D</button>
+            <button data-v="side" aria-pressed="false">Vista laterale</button>
+          </div>
+        </div>
+        <div id="v3d" class="view3d"><span class="tip">Trascina per girare, rotella per zoom</span></div>
+        <div id="vSide" class="plan-wrap hidden" style="border:0;padding:0"></div>
+      </div>
+      <div>
+        <div class="panel info" id="info"></div>
+        <div class="panel" style="margin-top:16px">
+          <h3 class="sub">Colli fuori dal container</h3>
+          <div id="outList"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div class="modal-bg" id="pasteModal">
+  <div class="modal" role="dialog" aria-labelledby="pmTitle">
+    <h2 id="pmTitle">Incolla da Excel</h2>
+    <p class="hint">In Excel seleziona le righe e copia (Ctrl+C). Poi clicca qui sotto e incolla (Ctrl+V). La riga dei titoli può esserci o no.</p>
+    <textarea id="pasteText" placeholder="Codice&#9;Lunghezza&#9;Larghezza&#9;Altezza&#9;Peso&#9;Quantità&#9;Sovrapponibile"></textarea>
+    <div class="row">
+      <button class="btn primary" id="pmReplace">Sostituisci la tabella</button>
+      <button class="btn" id="pmAppend">Aggiungi alla tabella</button>
+      <span class="spacer"></span>
+      <button class="btn" id="pmCancel">Annulla</button>
+    </div>
+  </div>
+</div>
+<div id="toast" role="status" aria-live="polite"></div>
+<div id="printArea"></div>
+
+<script>
+// ===================== CORE-START (logica di calcolo) =====================
+const EPS = 0.01;
+const DEFAULT_CONTAINERS = [
+  {name:"20' Standard",  L:589,  W:235, H:239, doorW:234, doorH:228, maxKg:28200, use:true},
+  {name:"40' Standard",  L:1203, W:235, H:239, doorW:234, doorH:228, maxKg:26700, use:true},
+  {name:"40' High Cube", L:1203, W:235, H:269, doorW:234, doorH:258, maxKg:26500, use:true},
+  {name:"45' High Cube", L:1355, W:235, H:269, doorW:234, doorH:258, maxKg:27600, use:true}
+];
+const DEFAULT_OPTS = {tol:5, maxSup:2, minSup:80};
+
+function ov(a0,a1,b0,b1){ return Math.min(a1,b1)-Math.max(a0,b0); }
+function fpArea(b,x,y,l,w){
+  const ox=ov(b.x,b.x+b.l,x,x+l); if(ox<=EPS) return 0;
+  const oy=ov(b.y,b.y+b.w,y,y+w); return oy>EPS ? ox*oy : 0;
+}
+function restZ(boxes,x,y,l,w,skip){
+  let z=0;
+  for(const b of boxes){
+    if(skip && skip.has(b.uid)) continue;
+    if(fpArea(b,x,y,l,w)>0){ const t=b.z+b.h; if(t>z) z=t; }
+  }
+  return z;
+}
+// controlla le regole di appoggio per un collo alla quota z
+function supportCheck(boxes,x,y,l,w,z,opts,skip){
+  const errs=[]; if(z<=EPS) return errs;
+  let area=0, n=0, bad=false;
+  for(const b of boxes){
+    if(skip && skip.has(b.uid)) continue;
+    const a=fpArea(b,x,y,l,w); if(!a) continue;
+    const t=b.z+b.h;
+    if(t<=z+EPS && t>z-opts.tol+1e-6){ n++; area+=a; if(!b.stack) bad=true; }
+  }
+  if(bad) errs.push('Appoggiato su un collo non sovrapponibile');
+  if(n>opts.maxSup) errs.push('Appoggiato su '+n+' colli (massimo '+opts.maxSup+')');
+  const cov=area/(l*w);
+  if(cov < opts.minSup/100 - 1e-9) errs.push('Base appoggiata solo al '+Math.round(cov*100)+'% (minimo '+opts.minSup+'%)');
+  return errs;
+}
+function fitsDoor(u,c){
+  return u.h<=c.doorH+EPS && u.h<=c.H+EPS &&
+         Math.min(u.l,u.w)<=Math.min(c.doorW,c.W)+EPS && Math.max(u.l,u.w)<=c.L+EPS;
+}
+// trova la posizione migliore: più in fondo possibile, poi più in basso, poi più a sinistra
+function findPosition(boxes,u,c,opts){
+  if(!fitsDoor(u,c)) return null;
+  const orients=[[u.l,u.w,false]];
+  if(Math.abs(u.l-u.w)>EPS) orients.push([u.w,u.l,true]);
+  const xs=new Set([0]), ys=new Set([0]);
+  for(const b of boxes){ xs.add(b.x); xs.add(b.x+b.l); ys.add(b.y); ys.add(b.y+b.w); }
+  const xa=[...xs].sort((a,b)=>a-b), ya=[...ys];
+  for(const x of xa){
+    let best=null;
+    for(const [l,w,rot] of orients){
+      if(x+l>c.L+EPS) continue;
+      const yc=ya.concat([c.W-w]);
+      for(const y of yc){
+        if(y<-EPS || y+w>c.W+EPS) continue;
+        const z=restZ(boxes,x,y,l,w);
+        if(z+u.h>c.H+EPS) continue;
+        if(z>EPS && supportCheck(boxes,x,y,l,w,z,opts).length) continue;
+        if(!best || z<best.z-EPS ||
+           (Math.abs(z-best.z)<=EPS && (y<best.y-EPS || (Math.abs(y-best.y)<=EPS && x+l<best.x+best.l-EPS))))
+          best={x,y,z,l,w,rot};
+      }
+    }
+    if(best) return best;
+  }
+  return null;
+}
+function toBox(u,p){ return {uid:u.uid,row:u.row,n:u.n,code:u.code,h:u.h,kg:u.kg,stack:u.stack,x:p.x,y:p.y,z:p.z,l:p.l,w:p.w,rot:!!p.rot}; }
+function toUnit(b){ return {uid:b.uid,row:b.row,n:b.n,code:b.code,h:b.h,kg:b.kg,stack:b.stack,l:b.rot?b.w:b.l,w:b.rot?b.l:b.w}; }
+function packUnits(units,c,opts,cmp){
+  const order=units.slice().sort(cmp), boxes=[], out=[];
+  for(const u of order){ const p=findPosition(boxes,u,c,opts); if(p) boxes.push(toBox(u,p)); else out.push(u); }
+  let uvol=0, len=0;
+  for(const u of out) uvol+=u.l*u.w*u.h;
+  for(const b of boxes) len=Math.max(len,b.x+b.l);
+  return {boxes,unplaced:out,uvol,len};
+}
+const tie=(a,b)=>(a.row-b.row)||(a.n-b.n);
+const vol=u=>u.l*u.w*u.h, base=u=>u.l*u.w;
+const STRATS=[
+  (a,b)=>(b.stack-a.stack)||(base(b)-base(a))||(b.h-a.h)||tie(a,b),
+  (a,b)=>(b.stack-a.stack)||(vol(b)-vol(a))||tie(a,b),
+  (a,b)=>(b.stack-a.stack)||(b.h-a.h)||(base(b)-base(a))||tie(a,b),
+  (a,b)=>(b.stack-a.stack)||(b.kg-a.kg)||(vol(b)-vol(a))||tie(a,b),
+  (a,b)=>(vol(b)-vol(a))||tie(a,b),
+  (a,b)=>(Math.max(b.l,b.w)-Math.max(a.l,a.w))||(b.h-a.h)||tie(a,b)
+];
+// prima prova con appoggio pieno (piano più ordinato), poi con le regole dell'utente
+function bestPack(units,c,opts){
+  let best=null;
+  const passes=[{...opts,minSup:Math.max(opts.minSup,98)}];
+  if(opts.minSup<98) passes.push(opts);
+  for(const o of passes){
+    for(const cmp of STRATS){
+      const r=packUnits(units,c,o,cmp);
+      if(!best || r.uvol<best.uvol-EPS || (Math.abs(r.uvol-best.uvol)<=EPS && r.len<best.len-EPS)) best=r;
+    }
+    if(best.uvol<=EPS) break;
+  }
+  return best;
+}
+function autoPlan(units,containers,opts){
+  const list=containers.map((c,i)=>({c,i})).filter(o=>o.c.use)
+    .sort((a,b)=>a.c.L*a.c.W*a.c.H-b.c.L*b.c.W*b.c.H);
+  const kg=units.reduce((s,u)=>s+(u.kg||0),0);
+  const notes=[]; let fb=null;
+  for(const {c,i} of list){
+    const r=bestPack(units,c,opts);
+    const heavy=kg>c.maxKg+EPS;
+    if(!r.unplaced.length && !heavy) return {ci:i,boxes:r.boxes,unplaced:[],notes,fit:true};
+    const noDoor=units.filter(u=>!fitsDoor(u,c)).length;
+    let why=[];
+    if(noDoor) why.push(noDoor+(noDoor===1?' collo non passa':' colli non passano')+' dalla porta');
+    if(r.unplaced.length) why.push((r.unplaced.length===1?'resta fuori 1 collo':'restano fuori '+r.unplaced.length+' colli'));
+    if(heavy) why.push('peso troppo alto');
+    notes.push(c.name+' non basta: '+why.join(', ')+'.');
+    if(!fb || r.uvol<fb.uvol-EPS || (Math.abs(r.uvol-fb.uvol)<=EPS && c.L*c.W*c.H>containers[fb.ci].L*containers[fb.ci].W*containers[fb.ci].H)) fb={...r,ci:i};
+  }
+  if(!fb) return null;
+  return {ci:fb.ci,boxes:fb.boxes,unplaced:fb.unplaced,notes,fit:false};
+}
+// livelli ed errori di ogni collo
+function analyze(boxes,c,opts){
+  const sorted=boxes.slice().sort((a,b)=>a.z-b.z);
+  const level=new Map(), errs=new Map();
+  for(const b of sorted){
+    let lv=1;
+    for(const o of sorted){
+      if(o===b) continue;
+      if(o.z+o.h<=b.z+EPS && fpArea(o,b.x,b.y,b.l,b.w)>0) lv=Math.max(lv,(level.get(o.uid)||1)+1);
+    }
+    level.set(b.uid,lv);
+  }
+  for(const b of boxes){
+    const e=[];
+    if(b.x<-EPS||b.y<-EPS||b.x+b.l>c.L+EPS||b.y+b.w>c.W+EPS) e.push('Esce dal container');
+    if(b.z+b.h>c.H+EPS) e.push('Troppo alto per il container');
+    if(!fitsDoor(b,c)) e.push('Non passa dalla porta');
+    e.push(...supportCheck(boxes,b.x,b.y,b.l,b.w,b.z,opts,new Set([b.uid])));
+    for(const o of boxes){
+      if(o!==b && fpArea(o,b.x,b.y,b.l,b.w)>0 && ov(b.z,b.z+b.h,o.z,o.z+o.h)>EPS){ e.push('Si sovrappone a un altro collo'); break; }
+    }
+    if(e.length) errs.set(b.uid,e);
+  }
+  return {level,errs};
+}
+function dependents(boxes,M){
+  const set=new Set(), st=[M];
+  while(st.length){
+    const a=st.pop();
+    for(const b of boxes){
+      if(b===M || set.has(b.uid)) continue;
+      if(b.z>=a.z+a.h-EPS && fpArea(b,a.x,a.y,a.l,a.w)>0){ set.add(b.uid); st.push(b); }
+    }
+  }
+  return set;
+}
+function settleOrder(order){ const placed=[]; for(const b of order){ b.z=restZ(placed,b.x,b.y,b.l,b.w); placed.push(b); } }
+// sposta un collo: quelli che erano sopra cadono, il collo spostato si appoggia dove arriva
+function moveBox(boxes,uid,nx,ny,nl,nw,nrot){
+  const M=boxes.find(b=>b.uid===uid); if(!M) return;
+  const deps=dependents(boxes,M);
+  M.x=nx; M.y=ny; M.l=nl; M.w=nw; M.rot=nrot;
+  const skip=new Set(deps); skip.add(uid);
+  const mz=restZ(boxes,nx,ny,nl,nw,skip);
+  const key=b=>b===M?mz:b.z;
+  const order=boxes.slice().sort((a,b)=>(key(a)-key(b))||(a===M?1:b===M?-1:0));
+  settleOrder(order);
+}
+function settleAll(boxes){ settleOrder(boxes.slice().sort((a,b)=>a.z-b.z)); }
+
+// lettura tabelle (incolla / Excel)
+function parseNum(v){
+  if(typeof v==='number') return v;
+  if(v==null) return NaN;
+  let s=String(v).trim().replace(/\s/g,'').replace(/[^\d.,\-]/g,'');
+  if(!s) return NaN;
+  if(s.includes('.')&&s.includes(',')){
+    if(s.lastIndexOf(',')>s.lastIndexOf('.')) s=s.replace(/\./g,'').replace(',','.'); else s=s.replace(/,/g,'');
+  } else if(s.includes(',')) s=s.replace(',','.');
+  else if(/^\d{1,3}(\.\d{3})+$/.test(s)) s=s.replace(/\./g,'');
+  return parseFloat(s);
+}
+function parseBool(v){
+  if(typeof v==='boolean') return v;
+  const s=String(v==null?'':v).trim().toLowerCase();
+  if(s==='') return null;
+  return ['si','sì','s','yes','y','x','1','true','vero','ok','✓'].includes(s);
+}
+const DIM_RE=/(\d+(?:[.,]\d+)?)\s*[x×*]\s*(\d+(?:[.,]\d+)?)\s*[x×*]\s*(\d+(?:[.,]\d+)?)/i;
+function parseTable(mx){
+  mx=mx.map(r=>r.map(c=>c==null?'':c)).filter(r=>r.some(c=>String(c).trim()!==''));
+  if(!mx.length) return {rows:[],skipped:0,note:''};
+  const head=mx[0].map(c=>String(c).trim().toLowerCase());
+  const isHeader=head.filter(h=>h && !isNaN(parseNum(h))).length<3 && !head.some(h=>DIM_RE.test(h));
+  let map={};
+  if(isHeader){
+    head.forEach((h,i)=>{
+      if(!h) return;
+      if(map.l==null && /lung|length|^l$|^lu/.test(h)) map.l=i;
+      else if(map.w==null && /larg|width|^w$|prof|^p$/.test(h)) map.w=i;
+      else if(map.h==null && /alt|height|^h$/.test(h)) map.h=i;
+      else if(map.kg==null && /peso|kg|weight|massa|lordo/.test(h)) map.kg=i;
+      else if(map.stack==null && /sovr|stack|impil|sopra|sovrap/.test(h)) map.stack=i;
+      else if(map.qty==null && /^q|quant|pz|pezz|n\.? ?colli|numero|^n\.?$|qty|^colli/.test(h)) map.qty=i;
+      else if(map.dim==null && /dim|misur|ingombr/.test(h)) map.dim=i;
+      else if(map.code==null && /cod|descr|nome|rif|art|collo|id|item|marca/.test(h)) map.code=i;
+    });
+    if(map.code==null){ const i=head.findIndex((h,j)=>!Object.values(map).includes(j)); if(i>=0 && (map.l==null || i<map.l)) map.code=i; }
+    mx=mx.slice(1);
+  } else {
+    const first=mx[0][0];
+    const order=!isNaN(parseNum(first)) && !DIM_RE.test(String(first)) ? ['l','w','h','kg','qty','stack'] : ['code','l','w','h','kg','qty','stack'];
+    order.forEach((k,i)=>map[k]=i);
+  }
+  const rows=[]; let skipped=0;
+  for(const r of mx){
+    const g=k=>map[k]==null?'':r[map[k]];
+    let l=parseNum(g('l')), w=parseNum(g('w')), h=parseNum(g('h'));
+    if(!(l>0&&w>0&&h>0)){
+      const cell=r.find(c=>DIM_RE.test(String(c)));
+      if(cell!=null){ const m=String(cell).match(DIM_RE); l=parseNum(m[1]); w=parseNum(m[2]); h=parseNum(m[3]); }
+    }
+    if(!(l>0&&w>0&&h>0)){ skipped++; continue; }
+    const q=parseNum(g('qty')); const st=parseBool(g('stack'));
+    rows.push({code:String(g('code')||'').trim(), l, w, h, kg:parseNum(g('kg'))||0, qty:q>0?Math.round(q):1, stack:st==null?true:st});
+  }
+  let note='';
+  const maxDim=Math.max(0,...rows.map(r=>Math.max(r.l,r.w,r.h)));
+  if(maxDim>0 && maxDim<=15){ rows.forEach(r=>{r.l=Math.round(r.l*100);r.w=Math.round(r.w*100);r.h=Math.round(r.h*100);}); note='Le misure erano in metri: le ho convertite in cm.'; }
+  else if(maxDim>3000){ rows.forEach(r=>{r.l=Math.round(r.l/10);r.w=Math.round(r.w/10);r.h=Math.round(r.h/10);}); note='Le misure erano in mm: le ho convertite in cm.'; }
+  return {rows,skipped,note};
+}
+function expandRows(rows){
+  const units=[];
+  rows.forEach((r,i)=>{
+    if(!(r.l>0&&r.w>0&&r.h>0)) return;
+    const q=Math.max(1,Math.round(r.qty||1));
+    for(let k=1;k<=q;k++) units.push({uid:i+'-'+k,row:i,n:k,code:r.code||('Collo '+(i+1)),l:+r.l,w:+r.w,h:+r.h,kg:+r.kg||0,stack:!!r.stack});
+  });
+  return units;
+}
+// ===================== CORE-END =====================
+
+// ===================== INTERFACCIA =====================
+const $=s=>document.querySelector(s);
+const PALETTE=['#D2AE74','#93BBA6','#93AED3','#CC98AA','#DDBB5E','#7FBDBD','#BBA6D6','#AFC072','#DDA27B','#A3B2BE','#D0CA80','#86ADDF','#C7B39A','#9CC58F'];
+const colorOf=row=>PALETTE[row%PALETTE.length];
+const fmt=(n,d=0)=>Number(n).toLocaleString('it-IT',{minimumFractionDigits:d,maximumFractionDigits:d});
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const SAMPLE=[
+  {code:'PAL-A',l:120,w:80,h:110,kg:450,qty:8,stack:true},
+  {code:'PAL-B',l:120,w:100,h:105,kg:600,qty:4,stack:true},
+  {code:'CASSA 1',l:200,w:110,h:90,kg:380,qty:3,stack:true},
+  {code:'CASSA 2',l:150,w:90,h:60,kg:120,qty:4,stack:false},
+  {code:'MACCHINA',l:240,w:150,h:180,kg:1500,qty:1,stack:false}
+];
+const S={rows:[],containers:JSON.parse(JSON.stringify(DEFAULT_CONTAINERS)),opts:{...DEFAULT_OPTS},plan:null,planRowsKey:'',sel:null,level:'all',view2:'3d',step:1};
+const KEY='pianoCarico.v1';
+function save(){ try{ localStorage.setItem(KEY,JSON.stringify({rows:S.rows,containers:S.containers,opts:S.opts,plan:S.plan,planRowsKey:S.planRowsKey})); }catch(e){} }
+function load(){
+  try{
+    const d=JSON.parse(localStorage.getItem(KEY)||'null');
+    if(d && Array.isArray(d.rows)){ S.rows=d.rows; if(Array.isArray(d.containers)&&d.containers.length) S.containers=d.containers; if(d.opts) S.opts={...DEFAULT_OPTS,...d.opts}; S.plan=d.plan||null; S.planRowsKey=d.planRowsKey||''; return true; }
+  }catch(e){}
+  return false;
+}
+const rowsKey=()=>JSON.stringify(S.rows)+JSON.stringify(S.opts);
+let toastT;
+function toast(msg,ms=3200){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('show'),ms); }
+
+// ---------- STEP 1: tabella ----------
+function renderTable(){
+  const tb=$('#tbody');
+  if(!S.rows.length){ tb.innerHTML='<tr><td colspan="9" class="hint" style="padding:18px">La tabella è vuota. Incolla le righe da Excel, carica un file o aggiungi una riga.</td></tr>'; renderTotals(); return; }
+  tb.innerHTML=S.rows.map((r,i)=>`<tr data-i="${i}">
+    <td class="num"><span class="swatch" style="background:${colorOf(i)}"></span>${i+1}</td>
+    <td><input type="text" data-k="code" value="${esc(r.code||'')}" aria-label="Codice riga ${i+1}"></td>
+    <td><input type="number" min="1" data-k="l" value="${r.l??''}" aria-label="Lunghezza riga ${i+1}"></td>
+    <td><input type="number" min="1" data-k="w" value="${r.w??''}" aria-label="Larghezza riga ${i+1}"></td>
+    <td><input type="number" min="1" data-k="h" value="${r.h??''}" aria-label="Altezza riga ${i+1}"></td>
+    <td><input type="number" min="0" data-k="kg" value="${r.kg??''}" aria-label="Peso riga ${i+1}"></td>
+    <td><input type="number" min="1" step="1" data-k="qty" value="${r.qty??1}" aria-label="Quantità riga ${i+1}"></td>
+    <td class="chk"><input type="checkbox" data-k="stack" ${r.stack?'checked':''} aria-label="Sovrapponibile riga ${i+1}"></td>
+    <td><button class="del" data-del="${i}" aria-label="Elimina riga ${i+1}" title="Elimina riga">×</button></td>
+  </tr>`).join('');
+  markBad(); renderTotals();
+}
+function markBad(){
+  $('#tbody').querySelectorAll('tr[data-i]').forEach(tr=>{
+    const r=S.rows[+tr.dataset.i];
+    ['l','w','h'].forEach(k=>tr.querySelector(`[data-k="${k}"]`).classList.toggle('bad',!(r[k]>0)));
+  });
+}
+function renderTotals(){
+  const u=expandRows(S.rows);
+  const v=u.reduce((s,x)=>s+x.l*x.w*x.h,0)/1e6, kg=u.reduce((s,x)=>s+x.kg,0);
+  $('#totals').innerHTML=`<span>Colli: <b>${fmt(u.length)}</b></span><span>Volume: <b>${fmt(v,2)} m³</b></span><span>Peso totale: <b>${fmt(kg)} kg</b></span>`;
+}
+$('#tbody').addEventListener('input',e=>{
+  const inp=e.target, tr=inp.closest('tr[data-i]'); if(!tr) return;
+  const r=S.rows[+tr.dataset.i], k=inp.dataset.k;
+  if(k==='code') r.code=inp.value;
+  else if(k==='stack') r.stack=inp.checked;
+  else r[k]=inp.value===''?null:parseNum(inp.value);
+  markBad(); renderTotals(); save(); updateStale();
+});
+$('#tbody').addEventListener('change',e=>{ if(e.target.dataset.k==='stack'){ S.rows[+e.target.closest('tr').dataset.i].stack=e.target.checked; save(); updateStale(); } });
+$('#tbody').addEventListener('click',e=>{
+  const d=e.target.closest('[data-del]'); if(!d) return;
+  S.rows.splice(+d.dataset.del,1); renderTable(); save(); updateStale();
+});
+$('#bAdd').onclick=()=>{ S.rows.push({code:'',l:null,w:null,h:null,kg:null,qty:1,stack:true}); renderTable(); save(); const ins=$('#tbody').querySelectorAll('tr:last-child input'); if(ins[0]) ins[0].focus(); };
+$('#bSample').onclick=()=>{ S.rows=JSON.parse(JSON.stringify(SAMPLE)); renderTable(); save(); updateStale(); toast('Esempio caricato'); };
+let clearArm=0;
+$('#bClear').onclick=()=>{
+  const b=$('#bClear');
+  if(Date.now()-clearArm<3500){ S.rows=[]; renderTable(); save(); updateStale(); b.textContent='Svuota tabella'; clearArm=0; toast('Tabella svuotata'); return; }
+  clearArm=Date.now(); b.textContent='Sicuro? Clicca ancora';
+  setTimeout(()=>{ if(Date.now()-clearArm>=3400) b.textContent='Svuota tabella'; },3500);
+};
+
+// incolla
+function openPaste(){ $('#pasteModal').classList.add('open'); $('#pasteText').value=''; setTimeout(()=>$('#pasteText').focus(),30); }
+function closePaste(){ $('#pasteModal').classList.remove('open'); }
+$('#bPaste').onclick=openPaste;
+$('#pmCancel').onclick=closePaste;
+$('#pasteModal').addEventListener('click',e=>{ if(e.target.id==='pasteModal') closePaste(); });
+function textToMatrix(t){
+  const lines=t.replace(/\r/g,'').split('\n');
+  const sep=t.includes('\t')?'\t':(t.includes(';')?';':',');
+  return lines.map(l=>l.split(sep));
+}
+function importRows(res,replace){
+  if(!res.rows.length){ toast('Non ho trovato righe valide. Servono almeno lunghezza, larghezza e altezza.',4500); return false; }
+  S.rows=replace?res.rows:S.rows.concat(res.rows);
+  renderTable(); save(); updateStale();
+  let m=`Importate ${res.rows.length} righe.`;
+  if(res.skipped) m+=` ${res.skipped} righe saltate (misure mancanti).`;
+  if(res.note) m+=' '+res.note;
+  toast(m,5000); return true;
+}
+$('#pmReplace').onclick=()=>{ if(importRows(parseTable(textToMatrix($('#pasteText').value)),true)) closePaste(); };
+$('#pmAppend').onclick=()=>{ if(importRows(parseTable(textToMatrix($('#pasteText').value)),false)) closePaste(); };
+// incolla diretto sulla pagina (step 1, fuori dai campi)
+document.addEventListener('paste',e=>{
+  if(S.step!==1 || $('#pasteModal').classList.contains('open')) return;
+  const tag=(e.target.tagName||'').toLowerCase(); if(tag==='input'||tag==='textarea') return;
+  const t=e.clipboardData&&e.clipboardData.getData('text'); if(!t||!t.includes('\t')) return;
+  e.preventDefault(); importRows(parseTable(textToMatrix(t)),!S.rows.length);
+});
+
+// file Excel
+$('#bFile').onclick=()=>$('#fileIn').click();
+$('#fileIn').onchange=async e=>{
+  const f=e.target.files[0]; e.target.value=''; if(!f) return;
+  if(!window.XLSX){ toast('Non riesco a leggere Excel ora. Usa "Incolla da Excel".',5000); return; }
+  try{
+    const buf=await f.arrayBuffer();
+    const wb=XLSX.read(buf,{type:'array'});
+    const sh=wb.Sheets['Colli']||wb.Sheets[wb.SheetNames[0]];
+    const mx=XLSX.utils.sheet_to_json(sh,{header:1,raw:true,defval:''});
+    const res=parseTable(mx);
+    if(!importRows(res,true)) return;
+    if(wb.Sheets['Piano']) restorePlanFromSheet(wb);
+  }catch(err){ toast('Non riesco a leggere questo file. Prova con "Incolla da Excel".',5000); }
+};
+
+// impostazioni container
+function renderSettings(){
+  $('#contBody').innerHTML=S.containers.map((c,i)=>`<tr data-i="${i}">
+    <td><input type="checkbox" data-k="use" ${c.use?'checked':''} aria-label="Usa ${esc(c.name)}"></td>
+    <td><input type="text" data-k="name" value="${esc(c.name)}"></td>
+    ${['L','W','H','doorW','doorH','maxKg'].map(k=>`<td><input type="number" min="1" data-k="${k}" value="${c[k]}"></td>`).join('')}
+  </tr>`).join('');
+  $('#oTol').value=S.opts.tol; $('#oMax').value=S.opts.maxSup; $('#oMin').value=S.opts.minSup;
+}
+$('#contBody').addEventListener('input',e=>{
+  const tr=e.target.closest('tr'); const c=S.containers[+tr.dataset.i], k=e.target.dataset.k;
+  if(k==='use') c.use=e.target.checked; else if(k==='name') c.name=e.target.value; else { const v=parseNum(e.target.value); if(v>0) c[k]=v; }
+  save(); updateStale();
+});
+['oTol','oMax','oMin'].forEach(id=>$('#'+id).addEventListener('input',()=>{
+  const t=parseNum($('#oTol').value), m=parseNum($('#oMax').value), p=parseNum($('#oMin').value);
+  if(t>=0) S.opts.tol=t; if(m>=1) S.opts.maxSup=Math.round(m); if(p>0&&p<=100) S.opts.minSup=p;
+  save(); updateStale();
+}));
+$('#bResetCont').onclick=()=>{ S.containers=JSON.parse(JSON.stringify(DEFAULT_CONTAINERS)); S.opts={...DEFAULT_OPTS}; renderSettings(); save(); updateStale(); toast('Valori standard ripristinati'); };
+
+// ---------- calcolo ----------
+function calculate(forceCi){
+  const units=expandRows(S.rows);
+  const bad=S.rows.filter(r=>!(r.l>0&&r.w>0&&r.h>0)).length;
+  if(!units.length){ toast('Inserisci almeno un collo con le misure.'); return; }
+  if(units.length>400){ toast('Ci sono '+units.length+' colli: il calcolo può richiedere qualche secondo.'); }
+  $('#calcMsg').textContent='Calcolo in corso…'; $('#bCalc').disabled=true;
+  setTimeout(()=>{
+    let plan;
+    if(forceCi!=null){
+      const c=S.containers[forceCi]; const r=bestPack(units,c,S.opts);
+      plan={ci:forceCi,boxes:r.boxes,unplaced:r.unplaced,notes:[],fit:!r.unplaced.length,forced:true};
+    } else {
+      plan=autoPlan(units,S.containers,S.opts);
+      if(!plan){ $('#calcMsg').textContent=''; $('#bCalc').disabled=false; toast('Scegli almeno un container in "Container e regole".'); return; }
+    }
+    if(bad) plan.notes.push(bad+(bad===1?' riga senza misure non è stata considerata.':' righe senza misure non sono state considerate.'));
+    S.plan=plan; S.planRowsKey=rowsKey(); S.sel=null; S.level='all';
+    $('#calcMsg').textContent=''; $('#bCalc').disabled=false;
+    save(); goStep(2);
+  },30);
+}
+$('#bCalc').onclick=()=>calculate();
+$('#bRecalc').onclick=()=>calculate(+$('#contSel').value);
+$('#bRecalc2').onclick=()=>calculate();
+function updateStale(){ $('#staleBox').classList.toggle('hidden',!S.plan || S.planRowsKey===rowsKey()); }
+
+// ---------- navigazione ----------
+function goStep(n){
+  S.step=n;
+  $('#step1').classList.toggle('hidden',n!==1); $('#step2').classList.toggle('hidden',n!==2);
+  $('#tab1').setAttribute('aria-selected',n===1); $('#tab2').setAttribute('aria-selected',n===2);
+  $('#tab2').disabled=!S.plan;
+  if(n===2){ renderPlan(); updateStale(); }
+  window.scrollTo(0,0);
+}
+$('#tab1').onclick=()=>goStep(1);
+$('#tab2').onclick=()=>{ if(S.plan) goStep(2); };
+
+// ---------- STEP 2: piano ----------
+const cont=()=>S.containers[S.plan.ci];
+let AN={level:new Map(),errs:new Map()};
+function renderPlan(){
+  const p=S.plan, c=cont();
+  AN=analyze(p.boxes,c,S.opts);
+  // riepilogo
+  const kg=p.boxes.reduce((s,b)=>s+b.kg,0), v=p.boxes.reduce((s,b)=>s+b.l*b.w*b.h,0);
+  const tot=p.boxes.length+p.unplaced.length;
+  const len=p.boxes.reduce((m,b)=>Math.max(m,b.x+b.l),0);
+  let cog=0; if(kg>0) cog=p.boxes.reduce((s,b)=>s+b.kg*(b.x+b.l/2),0)/kg;
+  const nErr=AN.errs.size;
+  $('#summary').innerHTML=`
+    <div class="stat"><span class="k">${p.fit&&!p.forced?'Container più piccolo che basta':'Container'}</span><h2 class="cont-name">${esc(c.name)}</h2></div>
+    <div class="stat ${p.unplaced.length?'warn':''}"><span class="v">${p.boxes.length} di ${tot}</span><span class="k">colli caricati</span></div>
+    <div class="stat"><span class="v">${fmt(v/(c.L*c.W*c.H)*100)}%</span><span class="k">volume usato</span></div>
+    <div class="stat ${kg>c.maxKg?'warn':''}"><span class="v">${fmt(kg)} kg</span><span class="k">su ${fmt(c.maxKg)} kg massimi</span></div>
+    <div class="stat"><span class="v">${fmt(len/100,2)} m</span><span class="k">usati su ${fmt(c.L/100,2)} m di lunghezza</span></div>
+    <div class="stat"><span class="v">${fmt(cog/100,2)} m</span><span class="k">baricentro dal fondo (metà: ${fmt(c.L/200,2)} m)</span></div>`;
+  const notes=[];
+  if(nErr) notes.push(`<li class="err">${nErr===1?'1 collo ha':nErr+' colli hanno'} un problema (bordo rosso). Clicca il collo per vedere quale.</li>`);
+  if(p.unplaced.length) notes.push(`<li class="err">${p.unplaced.length===1?'1 collo non entra':p.unplaced.length+' colli non entrano'}. ${p.fit?'':'Serve un secondo container o un container più grande.'}</li>`);
+  if(kg>c.maxKg) notes.push(`<li class="err">Peso oltre il massimo del container.</li>`);
+  (p.notes||[]).forEach(n=>notes.push(`<li>${esc(n)}</li>`));
+  $('#notes').innerHTML=notes.join('');
+  // select container
+  $('#contSel').innerHTML=S.containers.map((x,i)=>`<option value="${i}" ${i===p.ci?'selected':''}>${esc(x.name)}</option>`).join('');
+  // livelli
+  let maxLv=1; AN.level.forEach(v=>{ if(v>maxLv) maxLv=v; });
+  if(S.level!=='all' && S.level>maxLv) S.level='all';
+  let seg=`<button data-l="all" aria-pressed="${S.level==='all'}">Tutti</button>`;
+  for(let i=1;i<=maxLv;i++) seg+=`<button data-l="${i}" aria-pressed="${S.level===i}">${i===1?'A terra':'Livello '+i}</button>`;
+  $('#levelSeg').innerHTML=seg;
+  $('#topWrap').innerHTML=topSVG(p,c,AN,{level:S.level,sel:S.sel,interactive:true});
+  const svg=$('#topWrap svg'); svg.style.minWidth=Math.round((c.L+80)*0.72)+'px';
+  renderSecond(); renderInfo(); renderOut();
+  $('#bRot').disabled=!S.sel; $('#bRem').disabled=!S.sel;
+}
+function boxLabel(b){ return b.code; }
+function topSVG(p,c,an,o){
+  const L=c.L, W=c.W, m=40;
+  let s=`<svg class="plan" viewBox="${-m} ${-m-4} ${L+2*m} ${W+2*m+8}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Vista dall'alto del container">`;
+  s+=`<defs><pattern id="hatch" width="12" height="12" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="5" height="12" fill="var(--red)" opacity=".35"/></pattern></defs>`;
+  s+=`<rect class="wall" x="-7" y="-7" width="${L+7}" height="${W+14}"/><rect class="floor" x="0" y="0" width="${L}" height="${W}"/>`;
+  for(let x=100;x<L;x+=100){ s+=`<line class="gridl" x1="${x}" y1="0" x2="${x}" y2="${W}"/>`; if(x%(L>800?200:100)===0) s+=`<text class="ruler" x="${x}" y="-14" text-anchor="middle">${x/100} m</text>`; }
+  s+=`<line class="door" x1="${L+3}" y1="0" x2="${L+3}" y2="${W}"/>`;
+  s+=`<text class="side-label" transform="translate(${L+26},${W/2}) rotate(90)" text-anchor="middle">Porte</text>`;
+  s+=`<text class="side-label" transform="translate(-22,${W/2}) rotate(-90)" text-anchor="middle">Fondo</text>`;
+  s+=`<text class="ruler" x="0" y="${W+24}">Lato sinistro, visto dalle porte</text>`;
+  const lvl=o.level;
+  const list=p.boxes.slice().sort((a,b)=>a.z-b.z||a.x-b.x);
+  for(const b of list){
+    const lv=an.level.get(b.uid)||1;
+    let ghost=false;
+    if(lvl!=='all'){ if(lv>lvl) continue; if(lv<lvl) ghost=true; }
+    s+=boxSVG(b,W,an,{ghost,sel:o.sel===b.uid,badge:lvl==='all'&&lv>1?lv:0,interactive:o.interactive});
+  }
+  return s+'</svg>';
+}
+function boxSVG(b,W,an,o){
+  const yd=W-b.y-b.w, err=an.errs.has(b.uid);
+  const label=boxLabel(b);
+  const fs=Math.max(9,Math.min(22,Math.min(b.l,b.w)/3.4,b.l*0.9/(label.length*0.56)));
+  const maxCh=Math.max(2,Math.floor(b.l*0.92/(fs*0.56)));
+  const txt=label.length>maxCh?label.slice(0,maxCh-1)+'…':label;
+  const cls='bx'+(o.sel?' sel':'')+(err?' err':'')+(o.ghost?' ghost':'');
+  let g=`<g class="${cls}" data-uid="${b.uid}" transform="translate(${b.x},${yd})">`;
+  g+=`<rect class="b" width="${b.l}" height="${b.w}" rx="2" fill="${colorOf(b.row)}"/>`;
+  if(err) g+=`<rect width="${b.l}" height="${b.w}" fill="url(#hatch)" pointer-events="none"/>`;
+  g+=`<text x="${b.l/2}" y="${b.w/2-(b.w>fs*2.6?fs*0.45:0)}" font-size="${fs}">${esc(txt)}</text>`;
+  if(b.w>fs*2.6) g+=`<text x="${b.l/2}" y="${b.w/2+fs*0.65}" font-size="${fs*0.72}" opacity=".75">${b.l}×${b.w}×${b.h}</text>`;
+  if(o.badge){ const r=Math.min(11,Math.min(b.l,b.w)/4); g+=`<g class="badge" pointer-events="none"><circle cx="${b.l-r-3}" cy="${r+3}" r="${r}"/><text x="${b.l-r-3}" y="${r+3}" font-size="${r*1.3}" text-anchor="middle" dominant-baseline="central">${o.badge}</text></g>`; }
+  g+=`<title>${esc(b.code)} n.${b.n} | ${b.l}×${b.w}×${b.h} cm | ${fmt(b.kg)} kg | livello ${an.level.get(b.uid)||1}</title></g>`;
+  return g;
+}
+function sideSVG(p,c,an,sel){
+  const L=c.L, H=c.H, m=40;
+  let s=`<svg class="plan" viewBox="${-m} ${-m} ${L+2*m} ${H+2*m}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Vista laterale">`;
+  s+=`<rect class="wall" x="-7" y="-7" width="${L+7}" height="${H+14}"/><rect class="floor" x="0" y="0" width="${L}" height="${H}"/>`;
+  for(let x=100;x<L;x+=100) s+=`<line class="gridl" x1="${x}" y1="0" x2="${x}" y2="${H}"/>`;
+  s+=`<line class="door" x1="${L+3}" y1="0" x2="${L+3}" y2="${H}"/>`;
+  s+=`<text class="side-label" transform="translate(${L+26},${H/2}) rotate(90)" text-anchor="middle">Porte</text>`;
+  s+=`<text class="side-label" transform="translate(-22,${H/2}) rotate(-90)" text-anchor="middle">Fondo</text>`;
+  const list=p.boxes.slice().sort((a,b)=>(b.y+b.w)-(a.y+a.w));
+  for(const b of list){
+    const err=an.errs.has(b.uid);
+    const fs=Math.max(9,Math.min(20,Math.min(b.l,b.h)/3.4,b.l*0.9/(b.code.length*0.56)));
+    s+=`<g class="bx${sel===b.uid?' sel':''}${err?' err':''}" data-uid="${b.uid}" transform="translate(${b.x},${H-b.z-b.h})"><rect class="b" width="${b.l}" height="${b.h}" rx="2" fill="${colorOf(b.row)}"/><text x="${b.l/2}" y="${b.h/2}" font-size="${fs}">${esc(b.code.length>Math.floor(b.l*0.92/(fs*0.56))?b.code.slice(0,Math.max(1,Math.floor(b.l*0.92/(fs*0.56))-1))+'…':b.code)}</text><title>${esc(b.code)} n.${b.n}</title></g>`;
+  }
+  s+=`<text class="ruler" x="0" y="${H+26}">Vista dal lato sinistro</text>`;
+  return s+'</svg>';
+}
+function renderSecond(){
+  document.querySelectorAll('#viewSeg button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.v===S.view2));
+  const has3d=!!window.THREE;
+  if(!has3d && S.view2==='3d') S.view2='side';
+  $('#viewSeg [data-v="3d"]').classList.toggle('hidden',!has3d);
+  $('#v3d').classList.toggle('hidden',S.view2!=='3d'); $('#vSide').classList.toggle('hidden',S.view2!=='side');
+  if(S.view2==='side') $('#vSide').innerHTML=sideSVG(S.plan,cont(),AN,S.sel);
+  else build3D();
+}
+$('#viewSeg').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b) return; S.view2=b.dataset.v; renderSecond(); });
+$('#vSide').addEventListener('click',e=>{ const g=e.target.closest('.bx'); select(g?g.dataset.uid:null); });
+$('#levelSeg').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b) return; S.level=b.dataset.l==='all'?'all':+b.dataset.l; renderPlan(); });
+
+function renderInfo(){
+  const el=$('#info'); const b=S.plan.boxes.find(x=>x.uid===S.sel);
+  if(!b){ el.innerHTML=`<h3>Nessun collo scelto</h3><p class="hint">Clicca un collo nel disegno per vedere i dati, ruotarlo o toglierlo. Con la tastiera: R ruota, frecce spostano di 1 cm (con Maiusc 10 cm), Canc toglie.</p>`; return; }
+  const e=AN.errs.get(b.uid)||[];
+  el.innerHTML=`<h3><span class="swatch" style="background:${colorOf(b.row)}"></span>${esc(b.code)} <span class="hint">n.${b.n}</span></h3>
+    ${e.length?`<ul class="errs">${e.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>`:''}
+    <dl>
+      <dt>Misure</dt><dd>${b.l} × ${b.w} cm, alto ${b.h} cm${b.rot?' (ruotato)':''}</dd>
+      <dt>Peso</dt><dd>${fmt(b.kg)} kg</dd>
+      <dt>Sovrapponibile</dt><dd>${b.stack?'sì':'no'}</dd>
+      <dt>Livello</dt><dd>${(AN.level.get(b.uid)||1)===1?'a terra':'livello '+AN.level.get(b.uid)+' (a '+fmt(b.z)+' cm da terra)'}</dd>
+      <dt>Dal fondo</dt><dd>${fmt(b.x/100,2)} m</dd>
+      <dt>Dal lato sinistro</dt><dd>${fmt(b.y)} cm</dd>
+    </dl>
+    <div class="row"><button class="btn" data-act="rot">Ruota</button><button class="btn" data-act="rem">Togli dal container</button></div>`;
+}
+$('#info').addEventListener('click',e=>{ const a=e.target.closest('[data-act]'); if(!a) return; if(a.dataset.act==='rot') rotateSel(); else removeSel(); });
+function renderOut(){
+  const u=S.plan.unplaced;
+  if(!u.length){ $('#outList').innerHTML='<p class="hint" style="margin:0">Tutti i colli sono nel container.</p>'; return; }
+  $('#outList').innerHTML=`<p class="hint" style="margin:0">Clicca un collo per metterlo nel primo posto libero.</p><div class="chips">${u.map(x=>`<button class="chip" data-uid="${x.uid}" title="${x.l}×${x.w}×${x.h} cm, ${fmt(x.kg)} kg"><span class="swatch" style="background:${colorOf(x.row)}"></span>${esc(x.code)} n.${x.n}</button>`).join('')}</div>`;
+}
+$('#outList').addEventListener('click',e=>{
+  const ch=e.target.closest('.chip'); if(!ch) return;
+  const i=S.plan.unplaced.findIndex(x=>x.uid===ch.dataset.uid); const u=S.plan.unplaced[i];
+  const p=findPosition(S.plan.boxes,u,cont(),S.opts);
+  if(!p){ toast('Non c\'è un posto libero per questo collo. Prova a spostare altri colli o a cambiare container.',5000); return; }
+  S.plan.unplaced.splice(i,1); S.plan.boxes.push(toBox(u,p)); S.sel=u.uid; changed();
+});
+function select(uid){ S.sel=uid; renderPlan(); }
+function changed(){ save(); renderPlan(); }
+function rotateSel(){
+  const b=S.plan.boxes.find(x=>x.uid===S.sel); if(!b) return; const c=cont();
+  const nl=b.w, nw=b.l;
+  let nx=Math.min(b.x,Math.max(0,c.L-nl)), ny=Math.min(b.y,Math.max(0,c.W-nw));
+  moveBox(S.plan.boxes,b.uid,nx,ny,nl,nw,!b.rot); changed();
+}
+function removeSel(){
+  const i=S.plan.boxes.findIndex(x=>x.uid===S.sel); if(i<0) return;
+  const b=S.plan.boxes.splice(i,1)[0]; settleAll(S.plan.boxes);
+  S.plan.unplaced.push(toUnit(b)); S.plan.unplaced.sort((a,b)=>a.row-b.row||a.n-b.n);
+  S.sel=null; changed();
+}
+$('#bRot').onclick=rotateSel; $('#bRem').onclick=removeSel;
+$('#contSel').onchange=e=>{ S.plan.ci=+e.target.value; S.plan.forced=true; S.plan.notes=[]; changed(); toast('Container cambiato. Premi "Ricalcola" per una nuova disposizione automatica.',4500); };
+document.addEventListener('keydown',e=>{
+  if(S.step!==2 || !S.sel) return;
+  const tag=(e.target.tagName||'').toLowerCase(); if(tag==='input'||tag==='textarea'||tag==='select') return;
+  const b=S.plan.boxes.find(x=>x.uid===S.sel); if(!b) return; const c=cont();
+  if(e.key==='r'||e.key==='R'){ e.preventDefault(); rotateSel(); return; }
+  if(e.key==='Delete'||e.key==='Backspace'){ e.preventDefault(); removeSel(); return; }
+  if(e.key==='Escape'){ select(null); return; }
+  const st=e.shiftKey?10:1; let dx=0,dy=0;
+  if(e.key==='ArrowLeft') dx=-st; else if(e.key==='ArrowRight') dx=st; else if(e.key==='ArrowUp') dy=st; else if(e.key==='ArrowDown') dy=-st; else return;
+  e.preventDefault();
+  const nx=Math.max(0,Math.min(c.L-b.l,b.x+dx)), ny=Math.max(0,Math.min(c.W-b.w,b.y+dy));
+  moveBox(S.plan.boxes,b.uid,nx,ny,b.l,b.w,b.rot); changed();
+});
+
+// ---------- trascinamento nella vista dall'alto ----------
+let drag=null;
+function svgPt(svg,e){ const pt=svg.createSVGPoint(); pt.x=e.clientX; pt.y=e.clientY; return pt.matrixTransform(svg.getScreenCTM().inverse()); }
+function snap(v,len,cands,th){ let best=v, d=th; for(const c of cands){ for(const t of [c, c-len]){ const dd=Math.abs(v-t); if(dd<d){ d=dd; best=t; } } } return best; }
+$('#topWrap').addEventListener('pointerdown',e=>{
+  const svg=$('#topWrap svg'); if(!svg) return;
+  const g=e.target.closest('.bx');
+  if(!g){ if(S.sel) select(null); return; }
+  const b=S.plan.boxes.find(x=>x.uid===g.dataset.uid); if(!b) return;
+  const p=svgPt(svg,e);
+  drag={uid:b.uid,g,svg,sx:p.x,sy:p.y,ox:b.x,oy:b.y,nx:b.x,ny:b.y,moved:false,pid:e.pointerId};
+  try{ svg.setPointerCapture(e.pointerId); }catch(_){}
+  e.preventDefault();
+});
+$('#topWrap').addEventListener('pointermove',e=>{
+  if(!drag) return;
+  const c=cont(), b=S.plan.boxes.find(x=>x.uid===drag.uid);
+  const p=svgPt(drag.svg,e); const dx=p.x-drag.sx, dy=-(p.y-drag.sy);
+  if(!drag.moved && Math.hypot(dx,dy)<4) return;
+  if(!drag.moved){ drag.moved=true; drag.g.classList.add('dragging'); drag.g.parentNode.appendChild(drag.g); }
+  const others=S.plan.boxes.filter(x=>x.uid!==b.uid);
+  const xc=[0,c.L], yc=[0,c.W];
+  for(const o of others){ xc.push(o.x,o.x+o.l); yc.push(o.y,o.y+o.w); }
+  let nx=snap(drag.ox+dx,b.l,xc,8), ny=snap(drag.oy+dy,b.w,yc,8);
+  nx=Math.round(Math.max(0,Math.min(c.L-b.l,nx))); ny=Math.round(Math.max(0,Math.min(c.W-b.w,ny)));
+  drag.nx=nx; drag.ny=ny;
+  drag.g.setAttribute('transform',`translate(${nx},${c.W-ny-b.w})`);
+  // anteprima: verde se va bene, rosso se no
+  const deps=dependents(S.plan.boxes,b); deps.add(b.uid);
+  const z=restZ(S.plan.boxes,nx,ny,b.l,b.w,deps);
+  const ok=z+b.h<=c.H+EPS && !supportCheck(S.plan.boxes,nx,ny,b.l,b.w,z,S.opts,deps).length;
+  drag.g.classList.toggle('preview-ok',ok); drag.g.classList.toggle('preview-bad',!ok);
+});
+function endDrag(){
+  if(!drag) return; const d=drag; drag=null;
+  const b=S.plan.boxes.find(x=>x.uid===d.uid);
+  if(d.moved && b && (d.nx!==b.x||d.ny!==b.y)){ moveBox(S.plan.boxes,b.uid,d.nx,d.ny,b.l,b.w,b.rot); S.sel=b.uid; changed(); }
+  else select(d.uid);
+}
+$('#topWrap').addEventListener('pointerup',endDrag);
+$('#topWrap').addEventListener('pointercancel',()=>{ drag=null; renderPlan(); });
+
+// ---------- vista 3D ----------
+const T={};
+function init3D(){
+  if(T.ok || !window.THREE) return;
+  const el=$('#v3d');
+  T.renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
+  T.renderer.setPixelRatio(Math.min(2,window.devicePixelRatio||1));
+  el.appendChild(T.renderer.domElement);
+  T.scene=new THREE.Scene();
+  T.camera=new THREE.PerspectiveCamera(35,1,10,30000);
+  T.scene.add(new THREE.AmbientLight(0xffffff,0.62));
+  const dl=new THREE.DirectionalLight(0xffffff,0.55); dl.position.set(0.6,1,0.45); T.scene.add(dl);
+  const dl2=new THREE.DirectionalLight(0xffffff,0.22); dl2.position.set(-0.7,0.4,-0.5); T.scene.add(dl2);
+  T.group=new THREE.Group(); T.scene.add(T.group);
+  T.theta=0.55; T.phi=1.05; T.dist=0; T.ok=true;
+  let down=null;
+  el.addEventListener('pointerdown',e=>{ down={x:e.clientX,y:e.clientY,moved:false}; try{el.setPointerCapture(e.pointerId);}catch(_){} });
+  el.addEventListener('pointermove',e=>{
+    if(!down) return; const dx=e.clientX-down.x, dy=e.clientY-down.y;
+    if(Math.hypot(dx,dy)>3) down.moved=true;
+    if(down.moved){ T.theta-=dx*0.008; T.phi=Math.max(0.12,Math.min(1.52,T.phi-dy*0.008)); down.x=e.clientX; down.y=e.clientY; render3D(); }
+  });
+  el.addEventListener('pointerup',e=>{
+    if(down && !down.moved){
+      const r=el.getBoundingClientRect();
+      const v=new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1,-((e.clientY-r.top)/r.height)*2+1);
+      const rc=new THREE.Raycaster(); rc.setFromCamera(v,T.camera);
+      const hit=rc.intersectObjects(T.group.children.filter(o=>o.userData.uid),false)[0];
+      select(hit?hit.object.userData.uid:null);
+    }
+    down=null;
+  });
+  el.addEventListener('wheel',e=>{ e.preventDefault(); T.dist*=e.deltaY>0?1.1:0.9; render3D(); },{passive:false});
+  new ResizeObserver(()=>render3D()).observe(el);
+}
+function build3D(){
+  if(!window.THREE) return; init3D();
+  const c=cont(), g=T.group;
+  while(g.children.length){ const o=g.children.pop(); if(o.geometry) o.geometry.dispose(); if(o.material) o.material.dispose(); }
+  const cs=getComputedStyle(document.documentElement);
+  const steel=new THREE.Color(cs.getPropertyValue('--steel').trim()||'#22547B');
+  const floorC=new THREE.Color(cs.getPropertyValue('--floor').trim()||'#eeeeee');
+  // pavimento e pareti
+  const fl=new THREE.Mesh(new THREE.PlaneGeometry(c.L,c.W),new THREE.MeshLambertMaterial({color:floorC}));
+  fl.rotation.x=-Math.PI/2; fl.position.set(c.L/2,0,c.W/2); g.add(fl);
+  const cg=new THREE.EdgesGeometry(new THREE.BoxGeometry(c.L,c.H,c.W));
+  const cl=new THREE.LineSegments(cg,new THREE.LineBasicMaterial({color:steel})); cl.position.set(c.L/2,c.H/2,c.W/2); g.add(cl);
+  const back=new THREE.Mesh(new THREE.PlaneGeometry(c.W,c.H),new THREE.MeshLambertMaterial({color:steel,transparent:true,opacity:.25,side:THREE.DoubleSide}));
+  back.rotation.y=Math.PI/2; back.position.set(0,c.H/2,c.W/2); g.add(back);
+  const doorG=new THREE.EdgesGeometry(new THREE.PlaneGeometry(c.W,c.H));
+  const door=new THREE.LineSegments(doorG,new THREE.LineBasicMaterial({color:0xF2C200})); door.rotation.y=Math.PI/2; door.position.set(c.L,c.H/2,c.W/2); g.add(door);
+  for(const b of S.plan.boxes){
+    const err=AN.errs.has(b.uid), sel=S.sel===b.uid;
+    const col=sel?0xF2C200:(err?0xD9483E:new THREE.Color(colorOf(b.row)));
+    const geo=new THREE.BoxGeometry(Math.max(1,b.l-1),Math.max(1,b.h-1),Math.max(1,b.w-1));
+    const m=new THREE.Mesh(geo,new THREE.MeshLambertMaterial({color:col}));
+    m.position.set(b.x+b.l/2,b.z+b.h/2,c.W-b.y-b.w/2); m.userData.uid=b.uid; g.add(m);
+    const e=new THREE.LineSegments(new THREE.EdgesGeometry(geo),new THREE.LineBasicMaterial({color:0x1b2631,transparent:true,opacity:.55}));
+    e.position.copy(m.position); g.add(e);
+  }
+  T.target=new THREE.Vector3(c.L/2,c.H*0.3,c.W/2);
+  if(!T.dist || T.lastL!==c.L){ T.dist=c.L*1.25+300; T.lastL=c.L; }
+  render3D();
+}
+function render3D(){
+  if(!T.ok) return; const el=$('#v3d'); const w=el.clientWidth, h=el.clientHeight; if(!w||!h) return;
+  T.renderer.setSize(w,h,false); T.renderer.domElement.style.width=w+'px'; T.renderer.domElement.style.height=h+'px';
+  T.camera.aspect=w/h; T.camera.updateProjectionMatrix();
+  const t=T.target||new THREE.Vector3();
+  T.camera.position.set(t.x+T.dist*Math.sin(T.phi)*Math.sin(T.theta),t.y+T.dist*Math.cos(T.phi),t.z+T.dist*Math.sin(T.phi)*Math.cos(T.theta));
+  T.camera.lookAt(t); T.renderer.render(T.scene,T.camera);
+}
+if(window.matchMedia) window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change',()=>{ if(S.step===2) renderPlan(); });
+
+// ---------- Excel: esporta e reimporta ----------
+async function exportXlsx(){
+  if(!window.XLSX){ toast('Excel non disponibile in questo momento.'); return; }
+  const c=cont(), p=S.plan;
+  const wb=XLSX.utils.book_new();
+  const colli=[['Codice','Lunghezza (cm)','Larghezza (cm)','Altezza (cm)','Peso (kg)','Quantità','Sovrapponibile']].concat(S.rows.map(r=>[r.code,r.l,r.w,r.h,r.kg,r.qty,r.stack?'sì':'no']));
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(colli),'Colli');
+  const piano=[['Codice','N.','Lunghezza (cm)','Larghezza (cm)','Altezza (cm)','Peso (kg)','Dal fondo (cm)','Dal lato sinistro (cm)','Da terra (cm)','Livello','Ruotato']]
+    .concat(p.boxes.slice().sort((a,b)=>a.x-b.x||a.z-b.z||a.y-b.y).map(b=>[b.code,b.n,b.l,b.w,b.h,b.kg,b.x,b.y,b.z,AN.level.get(b.uid)||1,b.rot?'sì':'no']));
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(piano),'Piano');
+  const kg=p.boxes.reduce((s,b)=>s+b.kg,0);
+  const rie=[['Container',c.name],['Misure interne (cm)',`${c.L} x ${c.W} x ${c.H}`],['Colli caricati',p.boxes.length],['Colli fuori',p.unplaced.length],['Peso caricato (kg)',kg],['Peso massimo (kg)',c.maxKg]];
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rie),'Riepilogo');
+  await saveXlsx(wb,'piano-di-carico-'+c.name.replace(/[^\w]+/g,'-').replace(/-+$/,'')+'.xlsx');
+}
+async function saveXlsx(wb,name){
+  const data=XLSX.write(wb,{type:'array',bookType:'xlsx'});
+  let dl=null;
+  try{ if(window.claude && window.claude.use) dl=await window.claude.use('downloads'); }catch(_){}
+  if(dl){
+    try{ await dl.save({filename:name,data:new Blob([data])}); toast('File salvato'); }
+    catch(err){ if(err && err.code!=='declined') toast('Non riesco a salvare il file qui.'); }
+    return;
+  }
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([data],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})); a.download=name;
+  document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },1000);
+}
+$('#bXlsx').onclick=exportXlsx;
+// modello Excel vuoto da compilare
+$('#bTpl').onclick=async()=>{
+  if(!window.XLSX){ toast('Excel non disponibile in questo momento. Riprova tra poco.'); return; }
+  const wb=XLSX.utils.book_new();
+  const head=['Codice / descrizione','Lunghezza (cm)','Larghezza (cm)','Altezza (cm)','Peso 1 collo (kg)','Quantità','Sovrapponibile (sì/no)'];
+  const ws=XLSX.utils.aoa_to_sheet([head]);
+  ws['!cols']=[{wch:28},{wch:15},{wch:15},{wch:14},{wch:18},{wch:10},{wch:22}];
+  XLSX.utils.book_append_sheet(wb,ws,'Colli');
+  const ist=[
+    ['Come compilare il foglio "Colli"'],
+    [''],
+    ['1. Scrivi una riga per ogni tipo di collo. Non cambiare la prima riga con i titoli.'],
+    ['2. Misure in centimetri, peso in kg di UN collo.'],
+    ['3. Quantità = quanti colli uguali ci sono. Se lasci vuoto vale 1.'],
+    ['4. Sovrapponibile: scrivi "sì" se si può mettere un altro collo sopra, "no" se non si può. Se lasci vuoto vale "sì".'],
+    ['5. Salva il file e caricalo nel programma con il tasto "Carica file Excel".'],
+    [''],
+    ['Esempio:'],
+    head,
+    ['PAL-A',120,80,110,450,8,'sì'],
+    ['MACCHINA',240,150,180,1500,1,'no']
+  ];
+  const wi=XLSX.utils.aoa_to_sheet(ist);
+  wi['!cols']=[{wch:28},{wch:15},{wch:15},{wch:14},{wch:18},{wch:10},{wch:22}];
+  XLSX.utils.book_append_sheet(wb,wi,'Istruzioni');
+  await saveXlsx(wb,'modello-colli.xlsx');
+};
+function restorePlanFromSheet(wb){
+  try{
+    const rie=XLSX.utils.sheet_to_json(wb.Sheets['Riepilogo']||{},{header:1});
+    const cname=(rie[0]||[])[1];
+    let ci=S.containers.findIndex(c=>c.name===cname); if(ci<0) ci=S.containers.length-1;
+    const rows=XLSX.utils.sheet_to_json(wb.Sheets['Piano'],{header:1}).slice(1);
+    const units=expandRows(S.rows); const boxes=[];
+    for(const r of rows){
+      const code=String(r[0]??'').trim(), n=+r[1];
+      const i=units.findIndex(u=>u.code===code && u.n===n); if(i<0) continue;
+      const u=units.splice(i,1)[0]; const rot=String(r[10]).toLowerCase().startsWith('s');
+      boxes.push(toBox(u,{x:+r[6]||0,y:+r[7]||0,z:+r[8]||0,l:rot?u.w:u.l,w:rot?u.l:u.w,rot}));
+    }
+    if(!boxes.length) return;
+    S.plan={ci,boxes,unplaced:units,notes:['Piano caricato dal file Excel.'],fit:true,forced:true};
+    S.planRowsKey=rowsKey(); S.sel=null; S.level='all'; save(); goStep(2);
+    toast('Ho caricato anche il piano salvato nel file.',4500);
+  }catch(e){}
+}
+
+// ---------- stampa ----------
+$('#bPrint').onclick=()=>{
+  const p=S.plan, c=cont();
+  let maxLv=1; AN.level.forEach(v=>{ if(v>maxLv) maxLv=v; });
+  let h=`<h1>Piano di carico: ${esc(c.name)}</h1><p>Colli caricati: ${p.boxes.length} di ${p.boxes.length+p.unplaced.length}. Peso: ${fmt(p.boxes.reduce((s,b)=>s+b.kg,0))} kg. Porte a destra nei disegni.</p>`;
+  h+=`<div class="pv"><h2>Vista dall'alto, tutti i livelli</h2>${topSVG(p,c,AN,{level:'all',sel:null})}</div>`;
+  for(let i=1;i<=maxLv && maxLv>1;i++) h+=`<div class="pv"><h2>${i===1?'A terra':'Livello '+i}</h2>${topSVG(p,c,AN,{level:i,sel:null})}</div>`;
+  h+=`<div class="pv"><h2>Vista laterale</h2>${sideSVG(p,c,AN,null)}</div>`;
+  h+=`<h2>Ordine di carico (dal fondo alle porte)</h2><table><tr><th>Codice</th><th>N.</th><th>Misure cm</th><th>Peso kg</th><th>Dal fondo</th><th>Livello</th></tr>`;
+  h+=p.boxes.slice().sort((a,b)=>a.x-b.x||a.z-b.z||a.y-b.y).map(b=>`<tr><td>${esc(b.code)}</td><td>${b.n}</td><td>${b.l}×${b.w}×${b.h}</td><td>${fmt(b.kg)}</td><td>${fmt(b.x/100,2)} m</td><td>${AN.level.get(b.uid)||1}</td></tr>`).join('')+'</table>';
+  if(p.unplaced.length) h+=`<h2>Colli fuori dal container</h2><p>${p.unplaced.map(u=>esc(u.code)+' n.'+u.n).join(', ')}</p>`;
+  $('#printArea').innerHTML=h;
+  try{ window.print(); }catch(e){ toast('La stampa non è disponibile qui. Usa "Scarica Excel".'); }
+};
+
+// ---------- avvio ----------
+if(!load()) S.rows=JSON.parse(JSON.stringify(SAMPLE));
+renderTable(); renderSettings();
+$('#tab2').disabled=!S.plan;
+updateStale();
+</script>
+</body>
+</html>
