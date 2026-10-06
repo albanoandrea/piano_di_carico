@@ -1,6 +1,6 @@
 # Piano di carico container
 
-Strumento web per preparare i piani di carico dei container. L'utente inserisce i colli (misure, peso, quantità, sovrapponibile sì/no). Il tool sceglie il container più piccolo che basta, calcola una disposizione e la mostra in modo grafico. L'utente può poi modificare la disposizione a mano.
+Strumento web per preparare i piani di carico dei container. L'utente inserisce i colli (misure, peso, quantità, sovrapponibile sì/no). Il tool sceglie il container più piccolo che basta; se uno non basta, divide il carico sul minor numero di container (massimo 5) e propone fino a 3 soluzioni con riempimento simile. Calcola una disposizione e la mostra in modo grafico. L'utente può poi modificare la disposizione a mano.
 
 ## Chi lo usa
 
@@ -24,7 +24,8 @@ Strumento web per preparare i piani di carico dei container. L'utente inserisce 
 2. **Sovrapponibile:** un collo "sovrapponibile" può avere altri colli sopra. Un collo "non sovrapponibile" può stare sopra altri colli, ma niente sopra di lui.
 3. **Appoggio su due colli:** un collo può appoggiare su **massimo 2 colli** se la loro altezza **differisce meno di 5 cm**. Entrambi i valori sono modificabili in "Container e regole": `tol` (5 di default) e `maxSup` (2 di default, da 1 a 4).
 4. **Appoggio minimo:** la base deve essere appoggiata almeno per `minSup`% (80% di default, modificabile). Il calcolo automatico prima prova con appoggio quasi pieno (98%) per avere piani ordinati. Solo se non basta usa `minSup`.
-5. **Limiti del container:** si controllano il peso massimo, l'altezza interna e le misure della porta (larghezza e altezza).
+5. **Limiti del container:** si controllano il peso massimo, l'altezza interna e le misure della porta (larghezza e altezza). Il calcolo automatico non supera mai il peso massimo: i colli in più passano al container successivo.
+6. **Più container:** al massimo `maxCont` container (5 di default, da 1 a 5; con 1 si torna al comportamento a container singolo). Le soluzioni alternative devono riempire almeno `(1 - altGap/100)` del riempimento della migliore (`altGap` 10% di default). Entrambi in "Container e regole".
 
 ## Container di default (misure interne in cm)
 
@@ -52,8 +53,11 @@ La logica di calcolo è tra i commenti `CORE-START` e `CORE-END`. È fatta di fu
 
 - **`expandRows(rows)`:** trasforma le righe della tabella in unità singole. Ogni unità ha `uid` = `"<indiceRiga>-<n>"`.
 - **`findPosition(boxes, unit, container, opts)`:** cerca la posizione per un collo. Prova le posizioni candidate (bordi dei colli già messi) e sceglie la più vicina al fondo (x minima), poi la più bassa (z), poi quella più a sinistra (y). Prova entrambe le rotazioni. Usa `restZ` (gravità) e `supportCheck` (regole di appoggio).
-- **`packUnits` / `bestPack`:** provano 6 ordinamenti diversi (`STRATS`) e tengono il risultato migliore: meno volume fuori, poi minore lunghezza usata. Nel primo passaggio usano l'appoggio quasi pieno.
-- **`autoPlan(units, containers, opts)`:** prova i container attivi dal più piccolo al più grande. Restituisce il primo dove entra tutto, con le note sul perché i più piccoli non bastano. Se nessuno basta, restituisce il migliore con la lista dei colli fuori.
+- **`packUnits` / `bestPack`:** provano 6 ordinamenti diversi (`STRATS`) e tengono il risultato migliore: meno volume fuori, poi minore lunghezza usata. Nel primo passaggio usano l'appoggio quasi pieno. `packUnits` rispetta il peso massimo e salta i colli uguali a uno che non ha trovato posto (finché non si aggiunge un altro collo).
+- **`packCombo(units, cis, containers, opts, cache, prune)`:** riempie i container nell'ordine dato; quello che non entra passa al successivo. `cache` riusa i risultati con stesso container e stessi colli rimasti. Con `prune` si ferma se il resto non può più entrare (volume o peso).
+- **`autoPlan(units, containers, opts)`:** restituisce un **array di soluzioni** (la migliore per prima, al massimo 3) o `null` se nessun container è attivo. Prova le combinazioni da 1 a `maxCont` container (dal più grande al più piccolo, per volume totale crescente) e scarta subito quelle impossibili per volume, peso o porta. La migliore è quella con meno container e poi meno volume. Le alternative hanno lo stesso numero di container o uno in più, riempimento simile (`altGap`), nessun container vuoto, e non sono una versione "più grande in tutto" di una soluzione già trovata. Se niente basta, restituisce una sola soluzione con i colli fuori.
+- **`planCombo(units, cis, containers, opts)`:** piano con i tipi di container scelti a mano (tasto "Ricalcola").
+- **Formato soluzione:** `{conts:[{ci, boxes}], unplaced, notes, fit, forced}`. I colli fuori sono comuni a tutti i container della soluzione.
 - **`analyze(boxes, container, opts)`:** calcola il livello di ogni collo e gli errori: fuori dal container, troppo alto, porta, appoggio, sovrapposizione.
 - **`moveBox(...)`:** serve per le modifiche manuali. I colli che erano sopra al collo spostato cadono per gravità, e il collo spostato si appoggia dove arriva.
 - **`parseTable(matrix)`:** legge le tabelle incollate o i file Excel.
@@ -63,35 +67,34 @@ La logica di calcolo è tra i commenti `CORE-START` e `CORE-END`. È fatta di fu
 
 ### Interfaccia
 
-- **Stato:** tutto è nell'oggetto `S` (righe, container, opzioni, piano, selezione).
-- **Due passi:** "1. Colli" (tabella) e "2. Piano di carico" (riepilogo, vista dall'alto con trascinamento e filtro per livello, vista 3D o laterale, scheda del collo scelto, lista dei colli fuori).
+- **Stato:** tutto è nell'oggetto `S`: righe, container, opzioni, `sols` (soluzioni), `si` (soluzione scelta), `plan` (= `sols[si]`), `cc` (container che si sta guardando), selezione. Usa `setSols()` per cambiarle, `cur()` per il container guardato (`{ci, boxes}`) e `cont()` per il suo tipo.
+- **Salvataggio:** in `localStorage` si salvano `sols` e `si`. I salvataggi vecchi con `plan` (`{ci, boxes, ...}`) si convertono con `normPlan()`.
+- **Due passi:** "1. Colli" (tabella) e "2. Piano di carico" (soluzioni proposte, schede dei container, riepilogo, vista dall'alto con trascinamento e filtro per livello, vista 3D o laterale, scheda del collo scelto, lista dei colli fuori).
+- **Modifiche a mano tra container:** "Sposta nel container N" nella scheda del collo, "Aggiungi container", "Togli questo container" (i suoi colli vanno nella lista dei colli fuori). Cliccando un collo fuori, va nel container che si sta guardando.
 - **Tastiera:** R ruota, le frecce spostano di 1 cm (con Maiusc 10 cm), Canc o Backspace toglie il collo, Esc annulla la selezione.
 
 ### Excel
 
 - **Modello vuoto:** il tasto "Scarica modello Excel" crea i fogli `Colli` e `Istruzioni`.
-- **Esportazione:** "Scarica Excel" crea i fogli `Colli`, `Piano` e `Riepilogo`.
-- **Reimportazione:** se un file caricato ha il foglio `Piano`, il tool ricostruisce anche la disposizione salvata.
+- **Esportazione:** "Scarica Excel" crea i fogli `Colli`, `Piano` e `Riepilogo`. Nel foglio `Piano` l'ultima colonna (12ª) `Container` dice in quale container sta il collo (1, 2, ...). Nel `Riepilogo` le righe `Container`, `Container 2`, ... danno il tipo di ogni container; con più container segue una tabella per container.
+- **Reimportazione:** se un file caricato ha il foglio `Piano`, il tool ricostruisce anche la disposizione salvata. I file vecchi, senza colonna `Container`, valgono come container 1.
 - **Funzione di salvataggio:** `saveXlsx(wb, name)` prima prova `window.claude.use('downloads')`, che esiste solo quando la pagina è aperta dentro claude.ai. Altrimenti usa un normale link di download con Blob, ed è questo che funziona su GitHub Pages. Il ramo `window.claude` può restare, non dà problemi.
 
 ## Come testare
 
-- **Logica:** estrai il blocco CORE e provalo con Node (serve Node installato; su questa macchina al momento non c'è). Usa una cartella temporanea fuori dal repo:
-  ```bash
-  sed -n '/CORE-START/,/CORE-END/p' index.html > "$TMP/core.js"
-  # aggiungi in fondo a core.js dei casi di prova, poi:
-  node "$TMP/core.js"
-  ```
-  Casi utili:
-  - 11 europallet 120×80 non sovrapponibili devono entrare in un 20'.
-  - 22 europallet sovrapponibili alti 100 cm devono entrare in un 20'.
-  - I piani automatici devono avere `analyze(...).errs.size === 0`.
+- **Logica:** `node test/core.test.js` (Node è installato in WSL: `wsl node test/core.test.js`). Il test legge il blocco CORE da `index.html` e controlla, tra l'altro:
+  - 11 europallet 120×80 non sovrapponibili entrano in un 20'; 22 europallet sovrapponibili alti 100 cm entrano in un 20'.
+  - Carichi grandi vanno su più container, senza errori, senza container vuoti e con ogni collo una volta sola.
+  - Il peso massimo è rispettato; `maxCont` e `altGap` funzionano; al massimo 3 soluzioni.
+  - I piani automatici hanno `analyze(...).errs.size === 0` in ogni container.
+  Aggiungi un caso a questo file per ogni nuova regola o correzione.
 - **Interfaccia:** apri `index.html` nel browser. Il tasto "Carica esempio" carica dati di prova.
 
 ## Limiti noti e possibili sviluppi
 
 - **Soluzione non garantita ottimale:** l'algoritmo è euristico (il problema è "3D bin packing"). Trova soluzioni buone, non sempre la migliore.
-- **Un solo container:** se il carico non entra nel container più grande, i colli restano nella lista "fuori". Sviluppo possibile: divisione su più container.
+- **Più container, metodo goloso:** ogni container si riempie il più possibile e il resto passa al successivo, quindi l'ultimo container può essere poco pieno. Non c'è bilanciamento del peso tra container.
+- **Tempi:** con molti colli e 4-5 container il calcolo può durare alcuni secondi (circa 7 s per 200 europallet su 4 × 40'). La pagina resta ferma durante il calcolo.
 - **Peso sopra i colli:** non c'è un limite di peso caricabile sopra un collo. Il baricentro lungo la lunghezza è solo mostrato, non ottimizzato.
 - **Colli sotto una sporgenza:** non si possono mettere colli sotto una parte sporgente di un collo già appoggiato.
 
@@ -101,4 +104,6 @@ La logica di calcolo è tra i commenti `CORE-START` e `CORE-END`. È fatta di fu
 - **File unico:** niente nuove dipendenze se non servono. Se servono, usa un CDN (cdnjs o jsdelivr) con versione fissa.
 - **Comportamento:** non cambiare il sistema di coordinate o il formato dei fogli Excel senza mantenere la compatibilità con i file già salvati.
 - **Test:** dopo ogni modifica alla logica, rifai i test con Node descritti sopra.
+- **Versione:** la costante `APP_VERSION` (nel blocco interfaccia di `index.html`) si vede nel piè di pagina. Aggiornala a ogni rilascio: terzo numero per correzioni, secondo per nuove funzioni, primo per cambi che rompono la compatibilità (file Excel o dati salvati). 1.0.0 = container singolo, 1.1.0 = più container e soluzioni alternative.
+- **Esempio:** "Carica esempio" usa `SAMPLE`, pensato per dare 2 container nella soluzione migliore e un'alternativa con 3. Se cambi l'algoritmo, controlla che lo mostri ancora.
 - **Commit:** non inserire mai la riga `Co-Authored-By` (né altre righe di attribuzione) nei messaggi di commit. Il messaggio deve avere al massimo 3 righe.
