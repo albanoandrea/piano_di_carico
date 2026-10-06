@@ -4,9 +4,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Piano di carico container</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
@@ -33,8 +30,8 @@
 }
 *,*::before,*::after{box-sizing:inherit}
 html{scroll-padding-top:env(safe-area-inset-top,0px)}
-body{margin:0;background:var(--bg);color:var(--ink);font-family:"Barlow",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:16px;line-height:1.45}
-h1,h2,h3,.cond{font-family:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;font-weight:700;letter-spacing:.01em}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:16px;line-height:1.45}
+h1,h2,h3,.cond{font-family:"Bahnschrift","Roboto Condensed","Arial Narrow",system-ui,sans-serif;font-stretch:condensed;font-weight:700;letter-spacing:.01em}
 button,input,select,textarea{font:inherit;color:inherit}
 :focus-visible{outline:3px solid var(--yellow);outline-offset:2px}
 
@@ -44,7 +41,7 @@ button,input,select,textarea{font:inherit;color:inherit}
 .top h1{margin:0 0 12px;font-size:34px;line-height:1}
 .top p{margin:0 0 14px;max-width:60ch;opacity:.9;font-size:15px}
 .tabs{display:flex;gap:4px;margin-left:auto;align-self:flex-end}
-.tab{border:0;background:rgba(255,255,255,.14);color:var(--steel-ink);padding:10px 18px;border-radius:8px 8px 0 0;cursor:pointer;font-family:"Barlow Condensed","Arial Narrow",sans-serif;font-weight:600;font-size:19px}
+.tab{border:0;background:rgba(255,255,255,.14);color:var(--steel-ink);padding:10px 18px;border-radius:8px 8px 0 0;cursor:pointer;font-family:"Bahnschrift","Roboto Condensed","Arial Narrow",sans-serif;font-stretch:condensed;font-weight:600;font-size:19px}
 .tab[aria-selected="true"]{background:var(--bg);color:var(--ink)}
 .tab:disabled{opacity:.45;cursor:not-allowed}
 
@@ -60,6 +57,12 @@ main{max-width:1280px;margin:0 auto;padding:20px}
 .btn.danger{color:var(--red)}
 .hint{color:var(--muted);font-size:14px}
 .spacer{flex:1}
+
+/* piè di pagina */
+.foot{max-width:1280px;margin:0 auto;padding:4px 20px 28px;color:var(--muted);font-size:14px}
+.foot h2{font-size:18px;margin:0 0 6px;color:var(--ink)}
+.foot p{margin:0 0 8px;max-width:75ch}
+.foot a{color:inherit}
 
 /* table */
 .tbl-wrap{overflow-x:auto;margin-top:12px;border:1px solid var(--line);border-radius:8px}
@@ -95,7 +98,7 @@ details.settings summary{cursor:pointer;font-weight:600;padding:6px 0}
 .summary{display:flex;flex-wrap:wrap;gap:14px 34px;align-items:flex-end}
 .cont-name{font-size:34px;line-height:1;margin:0}
 .stat{display:flex;flex-direction:column}
-.stat .v{font-family:"Barlow Condensed","Arial Narrow",sans-serif;font-weight:600;font-size:24px;line-height:1.1}
+.stat .v{font-family:"Bahnschrift","Roboto Condensed","Arial Narrow",sans-serif;font-stretch:condensed;font-weight:600;font-size:24px;line-height:1.1}
 .stat .k{font-size:13px;color:var(--muted)}
 .stat.warn .v{color:var(--red)}
 .notes{margin:12px 0 0;padding:0;list-style:none;font-size:14px;color:var(--muted)}
@@ -112,7 +115,7 @@ select.cont-sel{padding:7px 10px;border:1px solid var(--line);border-radius:7px;
 
 .plan-wrap{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:6px}
 svg.plan{display:block;width:100%;height:auto;user-select:none;-webkit-user-select:none}
-svg.plan text{font-family:"Barlow Condensed","Arial Narrow",sans-serif;font-weight:600}
+svg.plan text{font-family:"Bahnschrift","Roboto Condensed","Arial Narrow",sans-serif;font-stretch:condensed;font-weight:600}
 .wall{fill:var(--steel)}
 .floor{fill:var(--floor)}
 .gridl{stroke:var(--grid);stroke-width:1.2}
@@ -160,7 +163,7 @@ svg.plan text{font-family:"Barlow Condensed","Arial Narrow",sans-serif;font-weig
 @media (prefers-reduced-motion: reduce){#toast{transition:none}}
 @media print{
   body{background:#fff;color:#000}
-  .top,main,#toast,.modal-bg{display:none!important}
+  .top,main,.foot,#toast,.modal-bg{display:none!important}
   #printArea{display:block;padding:0}
   #printArea h1{font-size:26px;margin:0 0 4px}
   #printArea h2{font-size:18px;margin:16px 0 6px;page-break-after:avoid}
@@ -283,6 +286,16 @@ svg.plan text{font-family:"Barlow Condensed","Arial Narrow",sans-serif;font-weig
     </div>
   </section>
 </main>
+
+<footer class="foot">
+  <h2>I tuoi dati</h2>
+  <p>I dati che inserisci restano solo su questo computer, nel browser. Il programma non li invia a nessun server e non usa cookie. Nessuno, oltre a te, può vederli.</p>
+  <p>La pagina è pubblicata su GitHub Pages e scarica due librerie da cdnjs (Cloudflare). Come ogni sito, questi servizi ricevono i dati tecnici della connessione, come l'indirizzo IP. Non ricevono i dati dei colli. Per sapere come li usano, leggi la <a href="https://docs.github.com/it/site-policy/privacy-policies/github-general-privacy-statement" target="_blank" rel="noopener">privacy di GitHub</a> e la <a href="https://www.cloudflare.com/it-it/privacypolicy/" target="_blank" rel="noopener">privacy di Cloudflare</a>.</p>
+  <div class="row">
+    <button class="btn danger" id="bWipe">Cancella i dati salvati</button>
+    <span class="hint">Programma gratuito e open source, con <a href="https://github.com/albanoandrea/piano_di_carico/blob/master/LICENSE" target="_blank" rel="noopener">licenza MIT</a>. Si usa senza garanzia: controlla sempre il piano prima di caricare.</span>
+  </div>
+</footer>
 
 <div class="modal-bg" id="pasteModal">
   <div class="modal" role="dialog" aria-labelledby="pmTitle">
@@ -624,6 +637,13 @@ $('#bClear').onclick=()=>{
   if(Date.now()-clearArm<3500){ S.rows=[]; renderTable(); save(); updateStale(); b.textContent='Svuota tabella'; clearArm=0; toast('Tabella svuotata'); return; }
   clearArm=Date.now(); b.textContent='Sicuro? Clicca ancora';
   setTimeout(()=>{ if(Date.now()-clearArm>=3400) b.textContent='Svuota tabella'; },3500);
+};
+let wipeArm=0;
+$('#bWipe').onclick=()=>{
+  const b=$('#bWipe');
+  if(Date.now()-wipeArm<3500){ try{ localStorage.removeItem(KEY); }catch(e){} location.reload(); return; }
+  wipeArm=Date.now(); b.textContent='Sicuro? Clicca ancora';
+  setTimeout(()=>{ if(Date.now()-wipeArm>=3400) b.textContent='Cancella i dati salvati'; },3500);
 };
 
 // incolla

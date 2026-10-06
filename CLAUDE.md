@@ -15,7 +15,7 @@ Strumento web per preparare i piani di carico dei container. L'utente inserisce 
 - **Librerie esterne:** sono caricate da CDN con tag `<script>` (versione UMD):
   - `three.js r128` (cdnjs) per la vista 3D. Se non si carica, la vista 3D si nasconde e resta la vista laterale.
   - `SheetJS xlsx 0.18.5` (cdnjs) per leggere e scrivere i file Excel.
-- **Font:** Barlow e Barlow Condensed da Google Fonts, con font di riserva.
+- **Font:** solo font di sistema (`system-ui`; per i titoli Bahnschrift, Roboto Condensed o Arial Narrow). Niente Google Fonts, per non inviare l'IP dei visitatori a Google (GDPR).
 - **Nessun server:** i dati restano nel browser, salvati in `localStorage` con la chiave `pianoCarico.v1`.
 
 ## Regole di carico (dal cliente)
